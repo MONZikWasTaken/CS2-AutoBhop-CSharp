@@ -1,4 +1,4 @@
-# CS2 AutoBhop (C#) (status: Working)
+# CS2 AutoBhop (C#) (Пофиксили?: Нет, пока что работает)
 
 # ПРОЧИТАЙ
 **Перенесено с [АХК](https://github.com/MONZikWasTaken/CS2AutoBhop) который использовал ([Tweek](https://www.youtube.com/watch?v=oxTDG69jFM8&t=436s)) на C# потому что у большинства людей были ошибки** 
