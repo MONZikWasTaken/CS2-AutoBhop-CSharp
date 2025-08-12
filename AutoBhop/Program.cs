@@ -5,7 +5,6 @@ namespace CS2AutoBhop
         [STAThread]
         static void Main()
         {
-            // Показываем консоль для отладки
             AllocConsole();
             Console.Title = "CS2 AutoBhop Debug Console";
 

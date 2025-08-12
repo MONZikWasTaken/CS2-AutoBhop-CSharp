@@ -16,7 +16,6 @@ namespace CS2AutoBhop
         [DllImport("user32.dll")]
         static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
-
         [DllImport("user32.dll")]
         static extern bool EnumWindows(EnumWindowsDelegate lpEnumFunc, IntPtr lParam);
 
@@ -43,7 +42,6 @@ namespace CS2AutoBhop
             public IntPtr dwExtraInfo;
         }
 
-        // Virtual Key Codes
         const uint VK_F1 = 0x70;
         const uint VK_F2 = 0x71;
         const uint VK_F3 = 0x72;
@@ -63,9 +61,9 @@ namespace CS2AutoBhop
         const uint VK_RSHIFT = 0xA1;
         const uint VK_LCONTROL = 0xA2;
         const uint VK_RCONTROL = 0xA3;
-        const uint VK_LMENU = 0xA4; // Alt
-        const uint VK_RMENU = 0xA5; // Alt
-        // Буквы A-Z
+        const uint VK_LMENU = 0xA4;
+        const uint VK_RMENU = 0xA5;
+
         const uint VK_A = 0x41;
         const uint VK_B = 0x42;
         const uint VK_C = 0x43;
@@ -92,7 +90,7 @@ namespace CS2AutoBhop
         const uint VK_X = 0x58;
         const uint VK_Y = 0x59;
         const uint VK_Z = 0x5A;
-        // Цифры 0-9
+
         const uint VK_0 = 0x30;
         const uint VK_1 = 0x31;
         const uint VK_2 = 0x32;
@@ -103,11 +101,16 @@ namespace CS2AutoBhop
         const uint VK_7 = 0x37;
         const uint VK_8 = 0x38;
         const uint VK_9 = 0x39;
+
+        const uint VK_LBUTTON = 0x01;
+        const uint VK_RBUTTON = 0x02;
+        const uint VK_MBUTTON = 0x04;
+        const uint VK_XBUTTON1 = 0x05;
+        const uint VK_XBUTTON2 = 0x06;
         const byte KEYEVENTF_KEYUP = 0x02;
         const uint MOUSEEVENTF_WHEEL = 0x0800;
         const uint INPUT_MOUSE = 0;
         const int WHEEL_DELTA = 120;
-        
 
         public class Config
         {
@@ -115,16 +118,16 @@ namespace CS2AutoBhop
             public bool FPSMode { get; set; } = true;
             public string ScrollDirection { get; set; } = "Down";
             public int ScrollDelay { get; set; } = 1;
-            
-            // Программные хоткеи
+
             public string BhopToggleKey { get; set; } = "F2";
             public string FPSToggleKey { get; set; } = "F3";
             public string JumpActivationKey { get; set; } = "Space";
-            
-            // Игровые бинды
-            public string GameJumpBind { get; set; } = "mwheeldown"; // mwheeldown, mwheelup, space и т.д.
-            public string GameFPSLowKey { get; set; } = "F5"; // F5 для fps_max 64
-            public string GameFPSHighKey { get; set; } = "F6"; // F6 для fps_max 0
+
+            public string JumpKey { get; set; } = "mwheeldown";
+
+            public string GameJumpBind { get; set; } = "mwheeldown";
+            public string GameFPSLowKey { get; set; } = "F5";
+            public string GameFPSHighKey { get; set; } = "F6";
         }
 
         private Config config = new();
@@ -141,37 +144,43 @@ namespace CS2AutoBhop
 
         public void Run()
         {
-            // Устанавливаем кодировку UTF-8 для эмодзи
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
-            Console.InputEncoding = System.Text.Encoding.UTF8;
+
+            try
+            {
+                Console.OutputEncoding = System.Text.Encoding.UTF8;
+                Console.InputEncoding = System.Text.Encoding.UTF8;
+            }
+            catch
+            {
+
+                Console.OutputEncoding = System.Text.Encoding.Default;
+                Console.InputEncoding = System.Text.Encoding.Default;
+            }
             Console.CursorVisible = false;
-            
+
             InitializeKeyMap();
             LoadConfig();
-            
-            // Инициализируем отображение
+
             ShowInitialDisplay();
-            
-            
-            LogMessage("🎮 CS2 AutoBhop Console запущен!");
-            LogMessage("🔍 Поиск процесса CS2...");
-            LogMessage("📁 Создание конфигов CS2...");
+
+            LogMessage("[INFO] CS2 AutoBhop Console запущен!");
+            LogMessage("[INFO] Поиск процесса CS2...");
+            LogMessage("[INFO] Создание конфигов CS2...");
 
             CreateCS2Configs();
             StartMonitoring();
 
-            // Основной цикл - проверяем hotkeys и bhop
             while (true)
             {
                 CheckHotkeys();
                 CheckBhop();
-                Thread.Sleep(1); // Минимальная задержка
+                Thread.Sleep(1);
             }
         }
 
         private void CheckHotkeys()
         {
-            // Bhop toggle hotkey
+
             uint bhopToggleVK = GetVirtualKeyCode(config.BhopToggleKey);
             if (bhopToggleVK != 0)
             {
@@ -180,13 +189,12 @@ namespace CS2AutoBhop
                 {
                     config.BhopEnabled = !config.BhopEnabled;
                     SaveConfig();
-                    LogMessage($"🦘 Bhop: {(config.BhopEnabled ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН")}");
+                    LogMessage($"[BHOP] Bhop: {(config.BhopEnabled ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН")}");
                     UpdateStatusInPlace();
                 }
                 lastBhopToggleState = bhopTogglePressed;
             }
 
-            // FPS toggle hotkey
             uint fpsToggleVK = GetVirtualKeyCode(config.FPSToggleKey);
             if (fpsToggleVK != 0)
             {
@@ -195,13 +203,12 @@ namespace CS2AutoBhop
                 {
                     config.FPSMode = !config.FPSMode;
                     SaveConfig();
-                    LogMessage($"🎯 FPS Control: {(config.FPSMode ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН")}");
+                    LogMessage($"[FPS] FPS Control: {(config.FPSMode ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН")}");
                     UpdateStatusInPlace();
                 }
                 lastFPSToggleState = fpsTogglePressed;
             }
 
-            // Insert для настроек
             bool insertPressed = (GetAsyncKeyState((int)VK_INSERT) & 0x8000) != 0;
             if (insertPressed)
             {
@@ -209,13 +216,12 @@ namespace CS2AutoBhop
             }
         }
 
-
         private void ShowInitialDisplay()
         {
             Console.Clear();
             ShowHeader();
         }
-        
+
         private void ShowHeader()
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
@@ -223,46 +229,45 @@ namespace CS2AutoBhop
             Console.WriteLine("║             CS2 AutoBhop             ║");
             Console.WriteLine("╚══════════════════════════════════════╝");
             Console.ResetColor();
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("▶ СТАТУС:");
+            Console.WriteLine(">> СТАТУС:");
             Console.ResetColor();
-            
+
             ShowStatus();
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("▶ УПРАВЛЕНИЕ:");
+            Console.WriteLine(">> УПРАВЛЕНИЕ:");
             Console.ResetColor();
             Console.WriteLine($"  Insert - настройки");
             Console.WriteLine($"  {config.BhopToggleKey}     - переключить Bhop");
             Console.WriteLine($"  {config.FPSToggleKey}     - переключить FPS Control");
             Console.WriteLine($"  {config.JumpActivationKey}  - (в игре) активировать бхоп");
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.WriteLine("════════════════════════════════════════");
             Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine("▶ ЛОГИ:");
+            Console.WriteLine(">> ЛОГИ:");
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.WriteLine("════════════════════════════════════════");
             Console.ResetColor();
         }
-        
+
         private void ShowStatus()
         {
-            // Очищаем и выводим строку Auto Bhop
-            Console.Write("  🦘 Auto Bhop:  ");
+
+            Console.Write("  [BHOP] Auto Bhop:  ");
             Console.ForegroundColor = config.BhopEnabled ? ConsoleColor.Green : ConsoleColor.Red;
             string bhopText = config.BhopEnabled ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН";
             Console.Write(bhopText);
-            Console.Write(new string(' ', Math.Max(0, 50 - bhopText.Length))); // Очищаем остаток строки
+            Console.Write(new string(' ', Math.Max(0, 50 - bhopText.Length)));
             Console.WriteLine();
             Console.ResetColor();
-            
-            // Очищаем и выводим строку FPS Control
-            Console.Write("  🎯 FPS Control: ");
+
+            Console.Write("  [FPS] FPS Control: ");
             string fpsText;
             ConsoleColor fpsColor;
             if (config.FPSMode && config.BhopEnabled)
@@ -282,20 +287,19 @@ namespace CS2AutoBhop
             }
             Console.ForegroundColor = fpsColor;
             Console.Write(fpsText);
-            Console.Write(new string(' ', Math.Max(0, 50 - fpsText.Length))); // Очищаем остаток строки
+            Console.Write(new string(' ', Math.Max(0, 50 - fpsText.Length)));
             Console.WriteLine();
             Console.ResetColor();
-            
-            // Очищаем и выводим строку CS2 Process
-            Console.Write("  🎮 CS2 Process: ");
+
+            Console.Write("  [GAME] CS2 Process: ");
             Console.ForegroundColor = cs2Handle != IntPtr.Zero ? ConsoleColor.Green : ConsoleColor.Red;
             string cs2Text = cs2Handle != IntPtr.Zero ? "НАЙДЕН" : "НЕ НАЙДЕН";
             Console.Write(cs2Text);
-            Console.Write(new string(' ', Math.Max(0, 50 - cs2Text.Length))); // Очищаем остаток строки
+            Console.Write(new string(' ', Math.Max(0, 50 - cs2Text.Length)));
             Console.WriteLine();
             Console.ResetColor();
         }
-        
+
         private void UpdateStatusInPlace()
         {
             lock (logLock)
@@ -304,23 +308,18 @@ namespace CS2AutoBhop
                 {
                     int currentTop = Console.CursorTop;
                     int currentLeft = Console.CursorLeft;
-                    
-                    // Обновляем только строки статуса (строки 5-7)
+
                     Console.SetCursorPosition(0, 5);
                     ShowStatus();
-                    
-                    // Возвращаем курсор
+
                     Console.SetCursorPosition(currentLeft, currentTop);
                 }
                 catch
                 {
-                    // Игнорируем ошибки
+
                 }
             }
         }
-
-
-
 
         private void CheckBhop()
         {
@@ -328,7 +327,7 @@ namespace CS2AutoBhop
             if (jumpActivationVK != 0)
             {
                 bool jumpPressed = (GetAsyncKeyState((int)jumpActivationVK) & 0x8000) != 0;
-                
+
                 if (jumpPressed && !isJumping && config.BhopEnabled)
                 {
                     HandleJumpPress();
@@ -343,9 +342,8 @@ namespace CS2AutoBhop
         private void HandleJumpPress()
         {
             isJumping = true;
-            LogMessage("⬆️ Прыжок начат");
+            LogMessage("[JUMP] Прыжок начат");
 
-            // FPS control работает только если Bhop включен
             if (config.BhopEnabled && config.FPSMode && !fpsOn)
             {
                 uint lowFpsVK = GetVirtualKeyCode(config.GameFPSLowKey);
@@ -353,7 +351,7 @@ namespace CS2AutoBhop
                 {
                     SendKey(lowFpsVK);
                     fpsOn = true;
-                    LogMessage($"🔽 {config.GameFPSLowKey} (низкий FPS для бхопа)");
+                    LogMessage($"[FPS] {config.GameFPSLowKey} (низкий FPS для бхопа)");
                 }
             }
             else if (config.BhopEnabled && !config.FPSMode)
@@ -362,7 +360,7 @@ namespace CS2AutoBhop
                 if (highFpsVK != 0)
                 {
                     SendKey(highFpsVK);
-                    LogMessage($"🔼 {config.GameFPSHighKey} (высокий FPS)");
+                    LogMessage($"[FPS] {config.GameFPSHighKey} (высокий FPS)");
                 }
             }
 
@@ -372,9 +370,8 @@ namespace CS2AutoBhop
         private void HandleJumpRelease()
         {
             isJumping = false;
-            LogMessage("⬇️ Прыжок завершен");
+            LogMessage("[JUMP] Прыжок завершен");
 
-            // FPS control работает только если Bhop включен
             if (config.BhopEnabled && config.FPSMode && fpsOn)
             {
                 uint highFpsVK = GetVirtualKeyCode(config.GameFPSHighKey);
@@ -382,7 +379,7 @@ namespace CS2AutoBhop
                 {
                     SendKey(highFpsVK);
                     fpsOn = false;
-                    LogMessage($"🔼 {config.GameFPSHighKey} (высокий FPS после бхопа)");
+                    LogMessage($"[FPS] {config.GameFPSHighKey} (высокий FPS после бхопа)");
                 }
             }
 
@@ -393,8 +390,21 @@ namespace CS2AutoBhop
         {
             if (!isJumping || !config.BhopEnabled) return;
 
-            int delta = config.ScrollDirection == "Down" ? -WHEEL_DELTA : WHEEL_DELTA;
-            SendMouseWheel(delta);
+            if (config.GameJumpBind == "mwheeldown" || config.GameJumpBind == "mwheelup")
+            {
+
+                int delta = config.GameJumpBind == "mwheeldown" ? -WHEEL_DELTA : WHEEL_DELTA;
+                SendMouseWheel(delta);
+            }
+            else
+            {
+
+                uint jumpVK = GetVirtualKeyCodeForJump(config.GameJumpBind);
+                if (jumpVK != 0)
+                {
+                    SendKey(jumpVK);
+                }
+            }
         }
 
         private void SendKey(uint keyCode)
@@ -403,10 +413,27 @@ namespace CS2AutoBhop
             Thread.Sleep(10);
             keybd_event((byte)keyCode, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
         }
-        
+
+        private uint GetVirtualKeyCodeForJump(string jumpKey)
+        {
+
+            switch (jumpKey.ToLower())
+            {
+                case "mouse1": return VK_LBUTTON;
+                case "mouse2": return VK_RBUTTON;
+                case "mouse3": return VK_MBUTTON;
+                case "mouse4": return VK_XBUTTON1;
+                case "mouse5": return VK_XBUTTON2;
+                case "space": return VK_SPACE;
+                default:
+
+                    return GetVirtualKeyCode(jumpKey);
+            }
+        }
+
         private void InitializeKeyMap()
         {
-            // F-клавиши
+
             keyMap["F1"] = VK_F1;
             keyMap["F2"] = VK_F2;
             keyMap["F3"] = VK_F3;
@@ -419,8 +446,7 @@ namespace CS2AutoBhop
             keyMap["F10"] = VK_F10;
             keyMap["F11"] = VK_F11;
             keyMap["F12"] = VK_F12;
-            
-            // Специальные клавиши
+
             keyMap["Space"] = VK_SPACE;
             keyMap["Enter"] = VK_ENTER;
             keyMap["Insert"] = VK_INSERT;
@@ -430,8 +456,7 @@ namespace CS2AutoBhop
             keyMap["RControl"] = VK_RCONTROL;
             keyMap["LAlt"] = VK_LMENU;
             keyMap["RAlt"] = VK_RMENU;
-            
-            // Буквы A-Z
+
             keyMap["A"] = VK_A; keyMap["B"] = VK_B; keyMap["C"] = VK_C; keyMap["D"] = VK_D;
             keyMap["E"] = VK_E; keyMap["F"] = VK_F; keyMap["G"] = VK_G; keyMap["H"] = VK_H;
             keyMap["I"] = VK_I; keyMap["J"] = VK_J; keyMap["K"] = VK_K; keyMap["L"] = VK_L;
@@ -439,13 +464,18 @@ namespace CS2AutoBhop
             keyMap["Q"] = VK_Q; keyMap["R"] = VK_R; keyMap["S"] = VK_S; keyMap["T"] = VK_T;
             keyMap["U"] = VK_U; keyMap["V"] = VK_V; keyMap["W"] = VK_W; keyMap["X"] = VK_X;
             keyMap["Y"] = VK_Y; keyMap["Z"] = VK_Z;
-            
-            // Цифры 0-9
+
             keyMap["0"] = VK_0; keyMap["1"] = VK_1; keyMap["2"] = VK_2; keyMap["3"] = VK_3;
             keyMap["4"] = VK_4; keyMap["5"] = VK_5; keyMap["6"] = VK_6; keyMap["7"] = VK_7;
             keyMap["8"] = VK_8; keyMap["9"] = VK_9;
+
+            keyMap["Mouse1"] = VK_LBUTTON;
+            keyMap["Mouse2"] = VK_RBUTTON;
+            keyMap["Mouse3"] = VK_MBUTTON;
+            keyMap["Mouse4"] = VK_XBUTTON1;
+            keyMap["Mouse5"] = VK_XBUTTON2;
         }
-        
+
         private uint GetVirtualKeyCode(string keyName)
         {
             string normalizedKey = NormalizeKeyName(keyName);
@@ -453,18 +483,16 @@ namespace CS2AutoBhop
             {
                 return keyMap[normalizedKey];
             }
-            return 0; // Неизвестная клавиша
+            return 0;
         }
-        
+
         private string NormalizeKeyName(string keyName)
         {
             if (string.IsNullOrEmpty(keyName))
                 return keyName;
-                
-            // Приводим к верхнему регистру для букв и цифр
+
             string normalized = keyName.Trim().ToUpper();
-            
-            // Специальная обработка для некоторых клавиш
+
             switch (normalized)
             {
                 case "SPACE":
@@ -496,16 +524,36 @@ namespace CS2AutoBhop
                 case "RALT":
                 case "RIGHT ALT":
                     return "RAlt";
+                case "MOUSE1":
+                case "LEFT MOUSE":
+                case "LEFT CLICK":
+                    return "Mouse1";
+                case "MOUSE2":
+                case "RIGHT MOUSE":
+                case "RIGHT CLICK":
+                    return "Mouse2";
+                case "MOUSE3":
+                case "MIDDLE MOUSE":
+                case "MIDDLE CLICK":
+                    return "Mouse3";
+                case "MOUSE4":
+                case "X1":
+                case "X1 MOUSE":
+                    return "Mouse4";
+                case "MOUSE5":
+                case "X2":
+                case "X2 MOUSE":
+                    return "Mouse5";
                 default:
-                    // Для F-клавиш, букв и цифр оставляем как есть (уже в верхнем регистре)
+
                     if (normalized.StartsWith("F") || (normalized.Length == 1 && (char.IsLetter(normalized[0]) || char.IsDigit(normalized[0]))))
                     {
                         return normalized;
                     }
-                    return keyName; // Возвращаем оригинал если не подходит
+                    return keyName;
             }
         }
-        
+
         private void ShowConfigMenu()
         {
             Console.Clear();
@@ -514,48 +562,58 @@ namespace CS2AutoBhop
             Console.WriteLine("║          НАСТРОЙКИ КОНФИГОВ          ║");
             Console.WriteLine("╚══════════════════════════════════════╝");
             Console.ResetColor();
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("▶ ПРОГРАММНЫЕ ХОТКЕИ:");
+            Console.WriteLine(">> ПРОГРАММНЫЕ ХОТКЕИ:");
             Console.ResetColor();
             Console.WriteLine($"  1. Переключение Bhop: {config.BhopToggleKey}");
             Console.WriteLine($"  2. Переключение FPS Control: {config.FPSToggleKey}");
             Console.WriteLine($"  3. Активация прыжка: {config.JumpActivationKey}");
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("▶ ИГРОВЫЕ БИНДЫ:");
+            Console.WriteLine(">> ИГРОВЫЕ БИНДЫ:");
             Console.ResetColor();
-            Console.WriteLine($"  4. Кнопка прыжка в игре: {config.GameJumpBind}");
+            Console.WriteLine($"  4. Кнопка для прыжка: {config.GameJumpBind}");
             Console.WriteLine($"  5. Кнопка низкого FPS: {config.GameFPSLowKey}");
             Console.WriteLine($"  6. Кнопка высокого FPS: {config.GameFPSHighKey}");
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("▶ ДРУГИЕ НАСТРОЙКИ:");
+            Console.WriteLine(">> НАСТРОЙКИ ПРЫЖКА:");
             Console.ResetColor();
-            Console.WriteLine($"  7. Направление скролла: {config.ScrollDirection}");
-            Console.WriteLine($"  8. Задержка скролла: {config.ScrollDelay}ms");
-            Console.WriteLine("  9. Пересоздать конфиги игры");
-            Console.WriteLine(" 10. Сбросить все настройки к дефолтным");
-            
+            Console.WriteLine($"  7. Задержка нажатий: {config.ScrollDelay}ms");
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("⚠️  ВНИМАНИЕ: При изменении игровых биндов (4-6)");
-            Console.WriteLine("   требуется ПЕРЕЗАПУСК CS2 для применения!");
+            Console.WriteLine(">> ДРУГИЕ:");
             Console.ResetColor();
-            
+            Console.WriteLine(" 10. Пересоздать конфиги игры");
+            Console.WriteLine(" 11. Сбросить все настройки к дефолтным");
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[ВАЖНО] В МЕНЮ НАСТРОЕК BHOP ОТКЛЮЧЕН! Нажмите '0' для выхода");
+            Console.ResetColor();
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("[WARNING] Игровые бинды (4-6) требуют ПЕРЕЗАПУСК CS2!");
+            Console.WriteLine("[HELP] Если не работает: exec autoexec в консоли игры");
+            Console.WriteLine("[HELP] Или добавь -exec autoexec в параметры запуска Steam");
+            Console.ResetColor();
+
             Console.WriteLine();
             Console.WriteLine("  0. Вернуться назад");
-            
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Green;
             Console.Write("Введите номер настройки и нажмите Enter: ");
             Console.ResetColor();
-            
+
             string? input = Console.ReadLine();
-            
+
             switch (input?.Trim())
             {
                 case "1":
@@ -568,7 +626,7 @@ namespace CS2AutoBhop
                     config.JumpActivationKey = ChangeHotkey("Активация прыжка", config.JumpActivationKey);
                     break;
                 case "4":
-                    config.GameJumpBind = ChangeGameJumpBind("Кнопка прыжка в игре", config.GameJumpBind);
+                    config.GameJumpBind = ChangeGameJumpBind("Кнопка для прыжка", config.GameJumpBind);
                     UpdateGameConfigs();
                     break;
                 case "5":
@@ -580,18 +638,13 @@ namespace CS2AutoBhop
                     UpdateGameConfigs();
                     break;
                 case "7":
-                    config.ScrollDirection = config.ScrollDirection == "Down" ? "Up" : "Down";
-                    Console.WriteLine($"Направление скролла изменено на: {config.ScrollDirection}");
-                    Thread.Sleep(1000);
-                    break;
-                case "8":
                     ChangeScrollDelay();
                     break;
-                case "9":
+                case "10":
                     CreateCS2Configs();
                     Thread.Sleep(2000);
                     break;
-                case "10":
+                case "11":
                     ResetToDefaults();
                     break;
                 case "0":
@@ -602,20 +655,21 @@ namespace CS2AutoBhop
                     Thread.Sleep(1000);
                     break;
             }
-            
+
             SaveConfig();
-            ShowConfigMenu(); // Показываем меню снова
+            ShowConfigMenu();
         }
-        
+
         private string ChangeHotkey(string description, string currentHotkey)
         {
             Console.WriteLine($"Изменение: {description}");
             Console.WriteLine("Доступные клавиши:");
             Console.WriteLine("F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12");
             Console.WriteLine("Space, Enter, Insert, LShift, RShift, LControl, RControl, LAlt, RAlt");
+            Console.WriteLine("Mouse1, Mouse2, Mouse3, Mouse4, Mouse5");
             Console.WriteLine("+ любые буквы/цифры (A-Z, 0-9)");
             Console.Write("Введите клавишу: ");
-            
+
             string? input = Console.ReadLine()?.Trim();
             if (!string.IsNullOrEmpty(input))
             {
@@ -627,12 +681,12 @@ namespace CS2AutoBhop
                     return normalizedKey;
                 }
             }
-            
+
             Console.WriteLine("Неверная клавиша!");
             Thread.Sleep(1500);
             return currentHotkey;
         }
-        
+
         private string ChangeGameBind(string description, string currentBind, string[] options)
         {
             Console.WriteLine($"Изменение: {description}");
@@ -642,10 +696,10 @@ namespace CS2AutoBhop
                 Console.WriteLine($"  {i + 1}. {options[i]}");
             }
             Console.Write("Введите номер: ");
-            
+
             ConsoleKeyInfo key = Console.ReadKey();
             Console.WriteLine();
-            
+
             if (char.IsDigit(key.KeyChar))
             {
                 int choice = key.KeyChar - '0';
@@ -667,26 +721,27 @@ namespace CS2AutoBhop
             Thread.Sleep(1500);
             return currentBind;
         }
-        
+
         private string ChangeGameHotkey(string description, string currentHotkey)
         {
             Console.WriteLine($"Изменение: {description}");
             Console.WriteLine("Доступные клавиши:");
             Console.WriteLine("F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12");
             Console.WriteLine("Space, Enter, Insert, LShift, RShift, LControl, RControl, LAlt, RAlt");
+            Console.WriteLine("Mouse1, Mouse2, Mouse3, Mouse4, Mouse5");
             Console.WriteLine("+ любые буквы/цифры (A-Z, 0-9)");
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("ВНИМАНИЕ: Убедитесь что клавиша не используется в игре!");
             Console.ResetColor();
             Console.Write("Введите клавишу: ");
-            
+
             string? input = Console.ReadLine()?.Trim();
             if (!string.IsNullOrEmpty(input))
             {
                 string normalizedKey = NormalizeKeyName(input);
                 if (keyMap.ContainsKey(normalizedKey))
                 {
-                    // Конвертируем в игровой формат (нижний регистр для CS2)
+
                     string gameBind = normalizedKey.ToLower();
                     if (normalizedKey == "Space") gameBind = "space";
                     else if (normalizedKey == "Enter") gameBind = "enter";
@@ -696,46 +751,123 @@ namespace CS2AutoBhop
                     else if (normalizedKey == "RControl") gameBind = "rcontrol";
                     else if (normalizedKey == "LAlt") gameBind = "lalt";
                     else if (normalizedKey == "RAlt") gameBind = "ralt";
-                    
+                    else if (normalizedKey == "Mouse1") gameBind = "mouse1";
+                    else if (normalizedKey == "Mouse2") gameBind = "mouse2";
+                    else if (normalizedKey == "Mouse3") gameBind = "mouse3";
+                    else if (normalizedKey == "Mouse4") gameBind = "mouse4";
+                    else if (normalizedKey == "Mouse5") gameBind = "mouse5";
+
                     Console.WriteLine($"Игровая клавиша изменена на: {gameBind}");
                     Thread.Sleep(1500);
                     return gameBind;
                 }
             }
-            
+
             Console.WriteLine("Неверная клавиша!");
             Thread.Sleep(1500);
             return currentHotkey;
         }
-        
+
+        private string ChangeJumpKey(string description, string currentJumpKey)
+        {
+            Console.WriteLine($"Изменение: {description}");
+            Console.WriteLine("Доступные кнопки для прыжка:");
+            Console.WriteLine("mwheeldown, mwheelup - колесико мыши");
+            Console.WriteLine("Mouse1, Mouse2, Mouse3, Mouse4, Mouse5 - кнопки мыши");
+            Console.WriteLine("Space, F1-F12, A-Z, 0-9 - клавиатура");
+            Console.Write("Введите кнопку: ");
+
+            string? input = Console.ReadLine()?.Trim()?.ToLower();
+            if (!string.IsNullOrEmpty(input))
+            {
+
+                if (input == "mwheeldown" || input == "mwheelup")
+                {
+                    Console.WriteLine($"Кнопка прыжка изменена на: {input}");
+
+                    config.GameJumpBind = input;
+                    UpdateGameConfigs();
+                    Thread.Sleep(1500);
+                    return input;
+                }
+
+                if (input.StartsWith("mouse") && input.Length == 6 && char.IsDigit(input[5]))
+                {
+                    string jumpKey = char.ToUpper(input[0]) + input.Substring(1);
+
+                    config.GameJumpBind = input.ToLower();
+                    UpdateGameConfigs();
+                    Console.WriteLine($"Кнопка прыжка изменена на: {jumpKey}");
+                    Thread.Sleep(1500);
+                    return jumpKey;
+                }
+
+                string normalizedKey = NormalizeKeyName(input);
+                if (keyMap.ContainsKey(normalizedKey))
+                {
+
+                    string gameBind = ConvertToGameBind(normalizedKey);
+                    config.GameJumpBind = gameBind;
+                    UpdateGameConfigs();
+                    Console.WriteLine($"Кнопка прыжка изменена на: {normalizedKey}");
+                    Thread.Sleep(1500);
+                    return normalizedKey;
+                }
+            }
+
+            Console.WriteLine("Неверная кнопка!");
+            Thread.Sleep(1500);
+            return currentJumpKey;
+        }
+
+        private string ConvertToGameBind(string normalizedKey)
+        {
+
+            switch (normalizedKey)
+            {
+                case "Space": return "space";
+                case "Enter": return "enter";
+                case "Insert": return "ins";
+                case "LShift": return "shift";
+                case "RShift": return "shift";
+                case "LControl": return "ctrl";
+                case "RControl": return "ctrl";
+                case "LAlt": return "alt";
+                case "RAlt": return "alt";
+                default:
+
+                    return normalizedKey.ToLower();
+            }
+        }
+
         private string ChangeGameJumpBind(string description, string currentBind)
         {
             Console.WriteLine($"Изменение: {description}");
             Console.WriteLine("Доступные бинды:");
-            Console.WriteLine("mwheeldown, mwheelup, mouse1, mouse2");
+            Console.WriteLine("mwheeldown, mwheelup, mouse1, mouse2, mouse3, mouse4, mouse5");
             Console.WriteLine("F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12");
             Console.WriteLine("Space, Enter, Insert, LShift, RShift, LControl, RControl, LAlt, RAlt");
             Console.WriteLine("+ любые буквы/цифры (A-Z, 0-9)");
             Console.Write("Введите бинд: ");
-            
+
             string? input = Console.ReadLine()?.Trim()?.ToLower();
             if (!string.IsNullOrEmpty(input))
             {
-                // Специальные игровые бинды
-                if (input == "mwheeldown" || input == "mwheelup" || 
-                    input == "mouse1" || input == "mouse2")
+
+                if (input == "mwheeldown" || input == "mwheelup" ||
+                    input == "mouse1" || input == "mouse2" || input == "mouse3" ||
+                    input == "mouse4" || input == "mouse5")
                 {
                     Console.WriteLine($"Игровой бинд изменен на: {input}");
                     Thread.Sleep(1500);
                     return input;
                 }
-                
-                // Обычные клавиши
+
                 string normalizedKey = NormalizeKeyName(input);
                 if (keyMap.ContainsKey(normalizedKey))
                 {
                     string gameBind = normalizedKey.ToLower();
-                    // Для игры специальные названия
+
                     if (normalizedKey == "Space") gameBind = "space";
                     else if (normalizedKey == "Enter") gameBind = "enter";
                     else if (normalizedKey == "LShift") gameBind = "lshift";
@@ -744,23 +876,28 @@ namespace CS2AutoBhop
                     else if (normalizedKey == "RControl") gameBind = "rcontrol";
                     else if (normalizedKey == "LAlt") gameBind = "lalt";
                     else if (normalizedKey == "RAlt") gameBind = "ralt";
-                    
+                    else if (normalizedKey == "Mouse1") gameBind = "mouse1";
+                    else if (normalizedKey == "Mouse2") gameBind = "mouse2";
+                    else if (normalizedKey == "Mouse3") gameBind = "mouse3";
+                    else if (normalizedKey == "Mouse4") gameBind = "mouse4";
+                    else if (normalizedKey == "Mouse5") gameBind = "mouse5";
+
                     Console.WriteLine($"Игровой бинд изменен на: {gameBind}");
                     Thread.Sleep(1500);
                     return gameBind;
                 }
             }
-            
+
             Console.WriteLine("Неверный бинд!");
             Thread.Sleep(1500);
             return currentBind;
         }
-        
+
         private void ChangeScrollDelay()
         {
             Console.Write($"Текущая задержка: {config.ScrollDelay}ms. Введите новое значение (1-100): ");
             string? input = Console.ReadLine()?.Trim();
-            
+
             if (!string.IsNullOrEmpty(input) && int.TryParse(input, out int delay) && delay >= 1 && delay <= 100)
             {
                 config.ScrollDelay = delay;
@@ -772,7 +909,7 @@ namespace CS2AutoBhop
             }
             Thread.Sleep(1500);
         }
-        
+
         private void ResetToDefaults()
         {
             Console.WriteLine("Сбросить все настройки к дефолтным значениям?");
@@ -781,17 +918,16 @@ namespace CS2AutoBhop
             Console.WriteLine("ЭТО СБРОСИТ:");
             Console.WriteLine("• Программные хоткеи (F2, F3, Space)");
             Console.WriteLine("• Игровые бинды (mwheeldown, F5, F6)");
-            Console.WriteLine("• Направление скролла (Down)");
             Console.WriteLine("• Задержку скролла (1ms)");
             Console.WriteLine("• Режимы Bhop и FPS (включены)");
             Console.ResetColor();
             Console.WriteLine();
             Console.Write("Введите 'yes' для подтверждения: ");
-            
+
             string? confirmation = Console.ReadLine()?.Trim().ToLower();
             if (confirmation == "yes")
             {
-                // Сбрасываем все настройки к дефолтным
+
                 config.BhopEnabled = true;
                 config.FPSMode = true;
                 config.ScrollDirection = "Down";
@@ -799,22 +935,22 @@ namespace CS2AutoBhop
                 config.BhopToggleKey = "F2";
                 config.FPSToggleKey = "F3";
                 config.JumpActivationKey = "Space";
+                config.JumpKey = "mwheeldown";
                 config.GameJumpBind = "mwheeldown";
                 config.GameFPSLowKey = "f5";
                 config.GameFPSHighKey = "f6";
-                
+
                 SaveConfig();
-                
+
                 Console.WriteLine();
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("✅ Все настройки сброшены к дефолтным!");
+                Console.WriteLine("[CONFIG] Все настройки сброшены к дефолтным!");
                 Console.ResetColor();
-                
-                // Обновляем игровые конфиги
-                Console.WriteLine("🔄 Обновление игровых конфигов...");
+
+                Console.WriteLine("[INFO] Обновление игровых конфигов...");
                 UpdateGameConfigs();
-                
-                Console.WriteLine("✨ Сброс завершен!");
+
+                Console.WriteLine("[INFO] Сброс завершен!");
             }
             else
             {
@@ -822,7 +958,7 @@ namespace CS2AutoBhop
             }
             Thread.Sleep(2000);
         }
-        
+
         private void UpdateGameConfigs()
         {
             try
@@ -830,62 +966,59 @@ namespace CS2AutoBhop
                 string? cs2Path = FindCS2InstallPath();
                 if (cs2Path == null)
                 {
-                    Console.WriteLine("❌ CS2 не найден в реестре, конфиги не обновлены");
+                    Console.WriteLine("[ERROR] CS2 не найден в реестре, конфиги не обновлены");
                     Thread.Sleep(2000);
                     return;
                 }
 
                 string cfgPath = Path.Combine(cs2Path, "game", "csgo", "cfg");
-                
+
                 if (!Directory.Exists(cfgPath))
                 {
-                    Console.WriteLine($"❌ Папка cfg не найдена: {cfgPath}");
+                    Console.WriteLine($"[ERROR] Папка cfg не найдена: {cfgPath}");
                     Thread.Sleep(2000);
                     return;
                 }
 
-                // Создаем обновленный autoexec.cfg
                 string autoexecPath = Path.Combine(cfgPath, "autoexec.cfg");
                 string autoexecContent = $@"// CS2 AutoBhop Configuration
-// Прыжки на настраиваемую кнопку
+
 alias +jump_ ""exec +jump""
 alias -jump_ ""exec -jump""
 bind {config.GameJumpBind} ""+jump_""
 {(config.GameJumpBind != "mwheeldown" && config.GameJumpBind != "mwheelup" ? "" : "bind " + (config.GameJumpBind == "mwheeldown" ? "mwheelup" : "mwheeldown") + " \"+jump_\"")}
 
-// fps_max 64 по настраиваемой кнопке (для бхопа)
 alias fps_set_64 ""fps_max 64""
 bind {config.GameFPSLowKey.ToLower()} ""fps_set_64""
 
-// fps_max 0 по настраиваемой кнопке (для игры)
 alias fps_set_0 ""fps_max 0""
 bind {config.GameFPSHighKey.ToLower()} ""fps_set_0""
 
 echo ""CS2 AutoBhop configs loaded!""";
 
                 File.WriteAllText(autoexecPath, autoexecContent);
-                Console.WriteLine("✅ Конфиг autoexec.cfg обновлен!");
-                
-                // Проверяем запущена ли игра
+                Console.WriteLine("[CONFIG] Конфиг autoexec.cfg обновлен!");
+
                 if (IsCS2Running())
                 {
                     Console.WriteLine();
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("⚠️ ВНИМАНИЕ: CS2 запущен!");
-                    Console.WriteLine("🔄 ПЕРЕЗАПУСТИТЕ ИГРУ для применения изменений!");
-                    Console.WriteLine("💡 Или выполните в консоли игры: exec autoexec");
+                    Console.WriteLine("[WARNING] ВНИМАНИЕ: CS2 запущен!");
+                    Console.WriteLine("[INFO] ПЕРЕЗАПУСТИТЕ ИГРУ для применения изменений!");
+                    Console.WriteLine("[HELP] Или выполните в консоли игры: exec autoexec");
+                    Console.WriteLine("[HELP] Альтернатива: добавьте -exec autoexec в параметры запуска Steam");
                     Console.ResetColor();
                 }
                 else
                 {
-                    Console.WriteLine("🎮 CS2 не запущен - изменения будут применены при запуске игры");
+                    Console.WriteLine("[INFO] CS2 не запущен - изменения будут применены при запуске игры");
                 }
-                
+
                 Thread.Sleep(3000);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Ошибка обновления конфигов: {ex.Message}");
+                Console.WriteLine($"[ERROR] Ошибка обновления конфигов: {ex.Message}");
                 Thread.Sleep(2000);
             }
         }
@@ -898,15 +1031,14 @@ echo ""CS2 AutoBhop configs loaded!""";
                 inputs[0].type = INPUT_MOUSE;
                 inputs[0].mi.mouseData = (uint)delta;
                 inputs[0].mi.dwFlags = MOUSEEVENTF_WHEEL;
-                
+
                 SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Ошибка колеса: {ex.Message}");
+                LogMessage($"[ERROR] Ошибка колеса: {ex.Message}");
             }
         }
-
 
         private void StartMonitoring()
         {
@@ -917,7 +1049,7 @@ echo ""CS2 AutoBhop configs loaded!""";
                     cs2Handle = FindCS2Window();
                     if (cs2Handle != IntPtr.Zero)
                     {
-                        LogMessage("✅ CS2 процесс найден!");
+                        LogMessage("[GAME] CS2 процесс найден!");
                         UpdateStatusInPlace();
                     }
                 }
@@ -957,22 +1089,20 @@ echo ""CS2 AutoBhop configs loaded!""";
                 string? cs2Path = FindCS2InstallPath();
                 if (cs2Path == null)
                 {
-                    LogMessage("❌ CS2 не найден в реестре, конфиги не созданы");
+                    LogMessage("[ERROR] CS2 не найден в реестре, конфиги не созданы");
                     return;
                 }
 
                 string cfgPath = Path.Combine(cs2Path, "game", "csgo", "cfg");
-                
+
                 if (!Directory.Exists(cfgPath))
                 {
-                    LogMessage($"❌ Папка cfg не найдена: {cfgPath}");
+                    LogMessage($"[ERROR] Папка cfg не найдена: {cfgPath}");
                     return;
                 }
 
-                // Проверяем запущена ли игра CS2
                 bool gameWasRunning = IsCS2Running();
-                
-                // Подготавливаем содержимое конфигов
+
                 string jumpPlusContent = @"setinfo jump 0
 toggle jump ""1 0 0""";
 
@@ -980,23 +1110,20 @@ toggle jump ""1 0 0""";
 toggle jump ""-999 0 0""";
 
                 string autoexecContent = $@"// CS2 AutoBhop Configuration
-// Прыжки на настраиваемую кнопку
+
 alias +jump_ ""exec +jump""
 alias -jump_ ""exec -jump""
 bind {config.GameJumpBind} ""+jump_""
 {(config.GameJumpBind != "mwheeldown" && config.GameJumpBind != "mwheelup" ? "" : "bind " + (config.GameJumpBind == "mwheeldown" ? "mwheelup" : "mwheeldown") + " \"+jump_\"")}
 
-// fps_max 64 по настраиваемой кнопке (для бхопа)
 alias fps_set_64 ""fps_max 64""
 bind {config.GameFPSLowKey.ToLower()} ""fps_set_64""
 
-// fps_max 0 по настраиваемой кнопке (для игры)
 alias fps_set_0 ""fps_max 0""
 bind {config.GameFPSHighKey.ToLower()} ""fps_set_0""
 
 echo ""CS2 AutoBhop configs loaded!""";
 
-                // Проверяем и создаем конфиги
                 int configsCreated = 0;
                 int configsSkipped = 0;
 
@@ -1004,48 +1131,50 @@ echo ""CS2 AutoBhop configs loaded!""";
                 configsCreated += CreateConfigIfNeeded(Path.Combine(cfgPath, "-jump.cfg"), jumpMinusContent, ref configsSkipped);
                 configsCreated += CreateConfigIfNeeded(Path.Combine(cfgPath, "autoexec.cfg"), autoexecContent, ref configsSkipped);
 
-                // Выводим результат
                 if (configsCreated > 0)
                 {
-                    LogMessage($"✅ Создано конфигов: {configsCreated}");
-                    
+                    LogMessage($"[CONFIG] Создано конфигов: {configsCreated}");
+
                     if (gameWasRunning)
                     {
-                        LogMessage("⚠️ CS2 был запущен - ОБЯЗАТЕЛЬНО ПЕРЕЗАПУСТИ ИГРУ!");
-                        LogMessage("🔄 Конфиги применятся только после ПОЛНОГО ПЕРЕЗАПУСКА игры!");
-                        LogMessage("💡 Альтернатива: выполни в консоли игры команду: exec autoexec");
+                        LogMessage("[WARNING] CS2 был запущен - ОБЯЗАТЕЛЬНО ПЕРЕЗАПУСТИ ИГРУ!");
+                        LogMessage("[WARNING] Конфиги применятся только после ПОЛНОГО ПЕРЕЗАПУСКА игры!");
+                        LogMessage("[HELP] Альтернатива: выполни в консоли игры команду: exec autoexec", ConsoleColor.Red);
+                        LogMessage("[HELP] Или добавь -exec autoexec в параметры запуска Steam", ConsoleColor.Red);
                     }
                     else
                     {
-                        LogMessage("🎮 CS2 не запущен - можешь запускать игру!");
+                        LogMessage("[GAME] CS2 не запущен - можешь запускать игру!");
                     }
                 }
-                
+
                 if (configsSkipped > 0)
                 {
-                    LogMessage($"ℹ️ Пропущено конфигов: {configsSkipped} (уже актуальные)");
-                    
+                    LogMessage($"[INFO] Пропущено конфигов: {configsSkipped} (уже актуальные)");
+
                     if (configsCreated == 0)
                     {
                         if (gameWasRunning)
                         {
-                            LogMessage("✅ Конфиги актуальны и игра запущена - можешь играть!");
+                            LogMessage("[CONFIG] Конфиги актуальны и игра запущена - можешь играть!");
+                            LogMessage("[HELP] Если конфиги не работают, выполни в консоли: exec autoexec", ConsoleColor.Red);
+                            LogMessage("[HELP] Или добавь -exec autoexec в параметры запуска Steam", ConsoleColor.Red);
                         }
                         else
                         {
-                            LogMessage("✅ Конфиги актуальны - можешь запускать игру!");
+                            LogMessage("[CONFIG] Конфиги актуальны - можешь запускать игру!");
                         }
                     }
                 }
 
                 if (configsCreated == 0 && configsSkipped == 0)
                 {
-                    LogMessage("❌ Не удалось создать конфиги");
+                    LogMessage("[ERROR] Не удалось создать конфиги");
                 }
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Ошибка создания конфигов: {ex.Message}");
+                LogMessage($"[ERROR] Ошибка создания конфигов: {ex.Message}");
             }
         }
 
@@ -1056,18 +1185,16 @@ echo ""CS2 AutoBhop configs loaded!""";
                 if (File.Exists(configPath))
                 {
                     string existingContent = File.ReadAllText(configPath);
-                    
-                    // Если содержимое такое же - пропускаем
+
                     if (existingContent.Trim() == expectedContent.Trim())
                     {
                         skipped++;
                         return 0;
                     }
-                    
-                    // Если содержимое разное - спрашиваем разрешение
+
                     string fileName = Path.GetFileName(configPath);
-                    LogMessage($"⚠️ Найден конфиг {fileName} с другим содержимым");
-                    
+                    LogMessage($"[WARNING] Найден конфиг {fileName} с другим содержимым");
+
                     var result = MessageBox.Show(
                         $"Найден конфиг {fileName} с отличающимся содержимым.\n\n" +
                         "Для работы программы нужно его перезаписать.\n\n" +
@@ -1077,12 +1204,12 @@ echo ""CS2 AutoBhop configs loaded!""";
                         MessageBoxIcon.Question,
                         MessageBoxDefaultButton.Button1
                     );
-                    
+
                     if (result == DialogResult.No)
                     {
-                        LogMessage($"❌ Пользователь отказался перезаписывать {fileName}");
-                        LogMessage("❌ Программа не может работать без нужных конфигов");
-                        
+                        LogMessage($"[ERROR] Пользователь отказался перезаписывать {fileName}");
+                        LogMessage("[ERROR] Программа не может работать без нужных конфигов");
+
                         MessageBox.Show(
                             "Программа не может работать без правильных конфигов CS2.\n\n" +
                             "Программа будет закрыта.",
@@ -1090,12 +1217,12 @@ echo ""CS2 AutoBhop configs loaded!""";
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information
                         );
-                        
+
                         Environment.Exit(0);
                         return 0;
                     }
-                    
-                    LogMessage($"✅ Пользователь разрешил перезаписать {fileName}");
+
+                    LogMessage($"[CONFIG] Пользователь разрешил перезаписать {fileName}");
                 }
 
                 File.WriteAllText(configPath, expectedContent);
@@ -1103,7 +1230,7 @@ echo ""CS2 AutoBhop configs loaded!""";
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Ошибка создания {Path.GetFileName(configPath)}: {ex.Message}");
+                LogMessage($"[ERROR] Ошибка создания {Path.GetFileName(configPath)}: {ex.Message}");
                 return 0;
             }
         }
@@ -1117,8 +1244,7 @@ echo ""CS2 AutoBhop configs loaded!""";
                 {
                     return true;
                 }
-                
-                // Проверяем и старое название
+
                 processes = Process.GetProcessesByName("csgo");
                 return processes.Length > 0;
             }
@@ -1132,7 +1258,7 @@ echo ""CS2 AutoBhop configs loaded!""";
         {
             try
             {
-                // Ищем Steam в реестре
+
                 string[] steamPaths = {
                     @"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Valve\Steam",
                     @"HKEY_LOCAL_MACHINE\SOFTWARE\Valve\Steam",
@@ -1144,17 +1270,15 @@ echo ""CS2 AutoBhop configs loaded!""";
                     string? installPath = Registry.GetValue(steamPath, "InstallPath", null) as string;
                     if (installPath != null && Directory.Exists(installPath))
                     {
-                        LogMessage($"🎮 Steam найден: {installPath}");
-                        
-                        // Проверяем стандартную папку CS2
+                        LogMessage($"[GAME] Steam найден: {installPath}");
+
                         string cs2Path = Path.Combine(installPath, "steamapps", "common", "Counter-Strike Global Offensive");
                         if (Directory.Exists(cs2Path))
                         {
-                            LogMessage($"✅ CS2 найден: {cs2Path}");
+                            LogMessage($"[GAME] CS2 найден: {cs2Path}");
                             return cs2Path;
                         }
 
-                        // Ищем в других библиотеках Steam
                         string libraryfoldersPath = Path.Combine(installPath, "steamapps", "libraryfolders.vdf");
                         if (File.Exists(libraryfoldersPath))
                         {
@@ -1168,7 +1292,7 @@ echo ""CS2 AutoBhop configs loaded!""";
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Ошибка поиска CS2: {ex.Message}");
+                LogMessage($"[ERROR] Ошибка поиска CS2: {ex.Message}");
                 return null;
             }
         }
@@ -1190,11 +1314,11 @@ echo ""CS2 AutoBhop configs loaded!""";
                         {
                             string libraryPath = line.Substring(startIndex, endIndex - startIndex);
                             libraryPath = libraryPath.Replace("\\\\", "\\");
-                            
+
                             string cs2Path = Path.Combine(libraryPath, "steamapps", "common", "Counter-Strike Global Offensive");
                             if (Directory.Exists(cs2Path))
                             {
-                                LogMessage($"✅ CS2 найден в библиотеке: {cs2Path}");
+                                LogMessage($"[GAME] CS2 найден в библиотеке: {cs2Path}");
                                 return cs2Path;
                             }
                         }
@@ -1211,59 +1335,69 @@ echo ""CS2 AutoBhop configs loaded!""";
 
         private void LogMessage(string message)
         {
+            LogMessage(message, null);
+        }
+
+        private void LogMessage(string message, ConsoleColor? forceColor)
+        {
             lock (logLock)
             {
-                // Проверяем, не достигли ли мы лимита высоты консоли
+
                 if (Console.CursorTop >= Console.WindowHeight - 2)
                 {
-                    // Очищаем консоль и показываем шапку заново
+
                     logCount = 0;
                     ShowInitialDisplay();
                 }
-                
+
                 string timestamp = DateTime.Now.ToString("HH:mm:ss");
                 logCount++;
-                
-                // Выводим сообщение в консоль
-                // Время серым цветом
+
                 Console.ForegroundColor = ConsoleColor.DarkGray;
                 Console.Write($"[{timestamp}] ");
                 Console.ResetColor();
-                
-                // Сообщение с цветом в зависимости от типа
-                if (message.Contains("✅"))
+
+                if (forceColor.HasValue)
                 {
-                    Console.ForegroundColor = ConsoleColor.Green;
-                }
-                else if (message.Contains("❌"))
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                }
-                else if (message.Contains("⚠️"))
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                }
-                else if (message.Contains("🎮") || message.Contains("🔍") || message.Contains("📁"))
-                {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                }
-                else if (message.Contains("🦘") || message.Contains("🎯"))
-                {
-                    Console.ForegroundColor = ConsoleColor.Magenta;
-                }
-                else if (message.Contains("⬆️") || message.Contains("⬇️") || message.Contains("🖱️"))
-                {
-                    Console.ForegroundColor = ConsoleColor.Blue;
-                }
-                else if (message.Contains("🧪"))
-                {
-                    Console.ForegroundColor = ConsoleColor.DarkYellow;
+                    Console.ForegroundColor = forceColor.Value;
                 }
                 else
                 {
-                    Console.ForegroundColor = ConsoleColor.White;
+
+                    if (message.StartsWith("[ERROR]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                    }
+                    else if (message.StartsWith("[WARNING]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                    }
+                    else if (message.StartsWith("[INFO]") || message.StartsWith("[CONFIG]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                    }
+                    else if (message.StartsWith("[BHOP]") || message.StartsWith("[FPS]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Magenta;
+                    }
+                    else if (message.StartsWith("[JUMP]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                    }
+                    else if (message.StartsWith("[GAME]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                    }
+                    else if (message.StartsWith("[HELP]"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkCyan;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
                 }
-                
+
                 Console.WriteLine(message);
                 Console.ResetColor();
             }
@@ -1278,12 +1412,12 @@ echo ""CS2 AutoBhop configs loaded!""";
                 {
                     string json = File.ReadAllText(configPath);
                     config = JsonSerializer.Deserialize<Config>(json) ?? new Config();
-                    LogMessage("⚙️ Конфигурация загружена");
+                    LogMessage("[CONFIG] Конфигурация загружена");
                 }
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Ошибка загрузки конфига: {ex.Message}");
+                LogMessage($"[ERROR] Ошибка загрузки конфига: {ex.Message}");
                 config = new Config();
             }
         }
@@ -1298,7 +1432,7 @@ echo ""CS2 AutoBhop configs loaded!""";
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Ошибка сохранения: {ex.Message}");
+                LogMessage($"[ERROR] Ошибка сохранения: {ex.Message}");
             }
         }
     }
