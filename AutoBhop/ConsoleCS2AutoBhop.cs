@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32;
+using System.Windows.Forms;
+using System.Security.Principal;
 
 namespace CS2AutoBhop
 {
@@ -9,9 +11,6 @@ namespace CS2AutoBhop
     {
         [DllImport("user32.dll")]
         static extern short GetAsyncKeyState(int vKey);
-
-        [DllImport("user32.dll")]
-        static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
         [DllImport("user32.dll")]
         static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -28,8 +27,31 @@ namespace CS2AutoBhop
         struct INPUT
         {
             public uint type;
-            public MOUSEINPUT mi;
+            public InputUnion u;
         }
+
+        [StructLayout(LayoutKind.Explicit)]
+        struct InputUnion
+        {
+            [FieldOffset(0)]
+            public MOUSEINPUT mi;
+
+            [FieldOffset(0)]
+            public KEYBDINPUT ki;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public UIntPtr dwExtraInfo;
+        }
+
+        [DllImport("user32.dll")]
+        static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
         [StructLayout(LayoutKind.Sequential)]
         struct MOUSEINPUT
@@ -41,6 +63,8 @@ namespace CS2AutoBhop
             public uint time;
             public IntPtr dwExtraInfo;
         }
+
+        const uint INPUT_KEYBOARD = 1;
 
         const uint VK_F1 = 0x70;
         const uint VK_F2 = 0x71;
@@ -141,9 +165,16 @@ namespace CS2AutoBhop
         private Dictionary<string, uint> keyMap = new Dictionary<string, uint>();
         private readonly object logLock = new();
         private int logCount = 0;
+        private string? rtssPath = null;
 
         public void Run()
         {
+
+            if (!IsRunningAsAdministrator())
+            {
+                RequestAdministratorRights();
+                return;
+            }
 
             try
             {
@@ -160,6 +191,8 @@ namespace CS2AutoBhop
 
             InitializeKeyMap();
             LoadConfig();
+
+            CheckRTSSSetup();
 
             ShowInitialDisplay();
 
@@ -406,12 +439,43 @@ namespace CS2AutoBhop
                 }
             }
         }
-
         private void SendKey(uint keyCode)
         {
-            keybd_event((byte)keyCode, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(10);
-            keybd_event((byte)keyCode, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+            INPUT[] inputs = new INPUT[2];
+
+            inputs[0] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)keyCode,
+                        wScan = (ushort)MapVirtualKey(keyCode, 0),
+                        dwFlags = 0,
+                        time = 0,
+                        dwExtraInfo = UIntPtr.Zero
+                    }
+                }
+            };
+
+            inputs[1] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)keyCode,
+                        wScan = (ushort)MapVirtualKey(keyCode, 0),
+                        dwFlags = KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = UIntPtr.Zero
+                    }
+                }
+            };
+
+            SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
         }
 
         private uint GetVirtualKeyCodeForJump(string jumpKey)
@@ -591,6 +655,12 @@ namespace CS2AutoBhop
             Console.ResetColor();
             Console.WriteLine(" 10. Пересоздать конфиги игры");
             Console.WriteLine(" 11. Сбросить все настройки к дефолтным");
+            if (rtssPath == null)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(" 12. Настроить RTSS (требуется для FPS Control)");
+                Console.ResetColor();
+            }
 
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Red;
@@ -632,10 +702,14 @@ namespace CS2AutoBhop
                 case "5":
                     config.GameFPSLowKey = ChangeGameHotkey("Кнопка низкого FPS", config.GameFPSLowKey);
                     UpdateGameConfigs();
+                    UpdateRTSSHotkeyConfig();
+                    RestartRTSS();
                     break;
                 case "6":
                     config.GameFPSHighKey = ChangeGameHotkey("Кнопка высокого FPS", config.GameFPSHighKey);
                     UpdateGameConfigs();
+                    UpdateRTSSHotkeyConfig();
+                    RestartRTSS();
                     break;
                 case "7":
                     ChangeScrollDelay();
@@ -646,6 +720,17 @@ namespace CS2AutoBhop
                     break;
                 case "11":
                     ResetToDefaults();
+                    break;
+                case "12":
+                    if (rtssPath == null)
+                    {
+                        SetupRTSSLater();
+                    }
+                    else
+                    {
+                        Console.WriteLine("RTSS уже настроен!");
+                        Thread.Sleep(1000);
+                    }
                     break;
                 case "0":
                     ShowInitialDisplay();
@@ -950,6 +1035,10 @@ namespace CS2AutoBhop
                 Console.WriteLine("[INFO] Обновление игровых конфигов...");
                 UpdateGameConfigs();
 
+                Console.WriteLine("[INFO] Обновление конфигов RTSS...");
+                UpdateRTSSHotkeyConfig();
+                RestartRTSS();
+
                 Console.WriteLine("[INFO] Сброс завершен!");
             }
             else
@@ -988,12 +1077,6 @@ alias -jump_ ""exec -jump""
 bind {config.GameJumpBind} ""+jump_""
 {(config.GameJumpBind != "mwheeldown" && config.GameJumpBind != "mwheelup" ? "" : "bind " + (config.GameJumpBind == "mwheeldown" ? "mwheelup" : "mwheeldown") + " \"+jump_\"")}
 
-alias fps_set_64 ""fps_max 64""
-bind {config.GameFPSLowKey.ToLower()} ""fps_set_64""
-
-alias fps_set_0 ""fps_max 0""
-bind {config.GameFPSHighKey.ToLower()} ""fps_set_0""
-
 echo ""CS2 AutoBhop configs loaded!""";
 
                 File.WriteAllText(autoexecPath, autoexecContent);
@@ -1029,8 +1112,8 @@ echo ""CS2 AutoBhop configs loaded!""";
             {
                 INPUT[] inputs = new INPUT[1];
                 inputs[0].type = INPUT_MOUSE;
-                inputs[0].mi.mouseData = (uint)delta;
-                inputs[0].mi.dwFlags = MOUSEEVENTF_WHEEL;
+                inputs[0].u.mi.mouseData = (uint)delta;
+                inputs[0].u.mi.dwFlags = MOUSEEVENTF_WHEEL;
 
                 SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
             }
@@ -1115,12 +1198,6 @@ alias +jump_ ""exec +jump""
 alias -jump_ ""exec -jump""
 bind {config.GameJumpBind} ""+jump_""
 {(config.GameJumpBind != "mwheeldown" && config.GameJumpBind != "mwheelup" ? "" : "bind " + (config.GameJumpBind == "mwheeldown" ? "mwheelup" : "mwheeldown") + " \"+jump_\"")}
-
-alias fps_set_64 ""fps_max 64""
-bind {config.GameFPSLowKey.ToLower()} ""fps_set_64""
-
-alias fps_set_0 ""fps_max 0""
-bind {config.GameFPSHighKey.ToLower()} ""fps_set_0""
 
 echo ""CS2 AutoBhop configs loaded!""";
 
@@ -1403,6 +1480,481 @@ echo ""CS2 AutoBhop configs loaded!""";
             }
         }
 
+        private bool IsRunningAsAdministrator()
+        {
+            try
+            {
+                WindowsIdentity identity = WindowsIdentity.GetCurrent();
+                WindowsPrincipal principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void RequestAdministratorRights()
+        {
+            try
+            {
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("╔══════════════════════════════════════╗");
+                Console.WriteLine("║         ТРЕБУЮТСЯ ПРАВА АДМИНА       ║");
+                Console.WriteLine("╚══════════════════════════════════════╝");
+                Console.ResetColor();
+                Console.WriteLine();
+                Console.WriteLine("Для записи конфигов RTSS требуются права администратора.");
+                Console.WriteLine("Программа будет перезапущена с повышенными правами...");
+                Console.WriteLine();
+                Console.WriteLine("Нажмите любую клавишу для продолжения...");
+                Console.ReadKey();
+
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = Process.GetCurrentProcess().MainModule?.FileName ?? Environment.ProcessPath ?? "AutoBhop.exe",
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    WindowStyle = ProcessWindowStyle.Normal
+                };
+
+                try
+                {
+                    Process.Start(startInfo);
+                    Environment.Exit(0);
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+
+                    Console.Clear();
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("╔══════════════════════════════════════╗");
+                    Console.WriteLine("║      ОТКАЗАНО В ПРАВАХ АДМИНА        ║");
+                    Console.WriteLine("╚══════════════════════════════════════╝");
+                    Console.ResetColor();
+                    Console.WriteLine();
+                    Console.WriteLine("Без прав администратора программа не может:");
+                    Console.WriteLine("• Записывать конфиги RTSS");
+                    Console.WriteLine("• Останавливать процессы RTSS");
+                    Console.WriteLine("• Запускать RTSS");
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("Программа будет закрыта.");
+                    Console.WriteLine("Для работы требуется запуск от имени администратора!");
+                    Console.ResetColor();
+                    Console.WriteLine();
+                    Console.WriteLine("Нажмите любую клавишу для выхода...");
+                    Console.ReadKey();
+                    Environment.Exit(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при запросе прав администратора: {ex.Message}");
+                Console.WriteLine("Нажмите любую клавишу для выхода...");
+                Console.ReadKey();
+                Environment.Exit(1);
+            }
+        }
+
+        private void CheckRTSSSetup()
+        {
+            LogMessage("[RTSS] Проверка RivaTuner Statistics Server...");
+
+            string? rtssPath = FindRTSSInstallPath();
+            if (rtssPath == null)
+            {
+                LogMessage("[RTSS] RTSS не найден автоматически");
+                HandleRTSSNotFound();
+                return;
+            }
+
+            LogMessage($"[RTSS] RTSS найден: {rtssPath}");
+            this.rtssPath = rtssPath;
+
+            if (IsRTSSConfigUpToDate())
+            {
+                LogMessage("[RTSS] Конфиги RTSS актуальны, запускаем без изменений");
+                StartRTSS();
+                return;
+            }
+
+            LogMessage("[RTSS] Конфиги RTSS требуют обновления");
+
+            if (!AskForRTSSConfigPermission())
+            {
+                LogMessage("[RTSS] Пользователь отказался от настройки RTSS");
+                HandleRTSSConfigDeclined();
+                return;
+            }
+
+            LogMessage("[RTSS] Пользователь разрешил настройку RTSS");
+            KillRTSSProcess();
+            SetupRTSSConfigs();
+            StartRTSS();
+        }
+
+        private string? FindRTSSInstallPath()
+        {
+            try
+            {
+
+                string[] possiblePaths = {
+                    @"C:\Program Files (x86)\RivaTuner Statistics Server",
+                    @"C:\Program Files\RivaTuner Statistics Server",
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "RivaTuner Statistics Server"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "RivaTuner Statistics Server")
+                };
+
+                foreach (string path in possiblePaths)
+                {
+                    if (Directory.Exists(path) && File.Exists(Path.Combine(path, "RTSS.exe")))
+                    {
+                        return path;
+                    }
+                }
+
+                string[] registryPaths = {
+                    @"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Unwinder\RTSS",
+                    @"HKEY_LOCAL_MACHINE\SOFTWARE\Unwinder\RTSS",
+                    @"HKEY_CURRENT_USER\SOFTWARE\Unwinder\RTSS"
+                };
+
+                foreach (string regPath in registryPaths)
+                {
+                    string? installPath = Registry.GetValue(regPath, "InstallDir", null) as string;
+                    if (installPath != null && Directory.Exists(installPath) && File.Exists(Path.Combine(installPath, "RTSS.exe")))
+                    {
+                        return installPath;
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Ошибка поиска RTSS: {ex.Message}");
+                return null;
+            }
+        }
+
+        private void HandleRTSSNotFound()
+        {
+            var result = MessageBox.Show(
+                "RivaTuner Statistics Server не найден автоматически.\n\n" +
+                "RTSS необходим для корректной работы программы.\n\n" +
+                "У вас установлен RivaTuner?",
+                "CS2 AutoBhop - RTSS не найден",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2
+            );
+
+            if (result == DialogResult.Yes)
+            {
+                ShowRTSSFolderDialog();
+            }
+            else
+            {
+                var downloadResult = MessageBox.Show(
+                    "Для работы программы необходим RivaTuner Statistics Server.\n\n" +
+                    "Открыть сайт для скачивания?",
+                    "CS2 AutoBhop - Требуется RTSS",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information
+                );
+
+                if (downloadResult == DialogResult.Yes)
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "https://www.guru3d.com/files-details/rtss-rivatuner-statistics-server-download.html",
+                            UseShellExecute = true
+                        });
+                    }
+                    catch { }
+                }
+
+                MessageBox.Show(
+                    "Программа будет закрыта.\n\n" +
+                    "Запустите программу снова после установки RTSS.",
+                    "CS2 AutoBhop - Выход",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+
+                Environment.Exit(0);
+            }
+        }
+
+        private void ShowRTSSFolderDialog()
+        {
+            using (var folderDialog = new FolderBrowserDialog())
+            {
+                folderDialog.Description = "Выберите папку установки RivaTuner Statistics Server";
+                folderDialog.ShowNewFolderButton = false;
+
+                if (folderDialog.ShowDialog() == DialogResult.OK)
+                {
+                    string selectedPath = folderDialog.SelectedPath;
+
+                    if (File.Exists(Path.Combine(selectedPath, "RTSS.exe")))
+                    {
+                        LogMessage($"[RTSS] Пользователь указал путь: {selectedPath}");
+                        rtssPath = selectedPath;
+
+                        KillRTSSProcess();
+                        SetupRTSSConfigs();
+                        StartRTSS();
+                    }
+                    else
+                    {
+                        MessageBox.Show(
+                            "В выбранной папке не найден файл RTSS.exe.\n\n" +
+                            "Это не папка RivaTuner Statistics Server.",
+                            "CS2 AutoBhop - Неверная папка",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+
+                        ShowRTSSFolderDialog();
+                    }
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "Без RTSS программа не может работать корректно.\n\n" +
+                        "Программа будет закрыта.",
+                        "CS2 AutoBhop - Выход",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
+
+                    Environment.Exit(0);
+                }
+            }
+        }
+
+        private void KillRTSSProcess()
+        {
+            try
+            {
+                Process[] rtssProcesses = Process.GetProcessesByName("RTSS");
+                foreach (var process in rtssProcesses)
+                {
+                    try
+                    {
+                        process.Kill();
+                        process.WaitForExit(3000);
+                        LogMessage("[RTSS] Процесс RTSS остановлен");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"[WARNING] Не удалось остановить процесс RTSS: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[WARNING] Ошибка при остановке RTSS: {ex.Message}");
+            }
+        }
+
+        private void SetupRTSSConfigs()
+        {
+            if (rtssPath == null) return;
+
+            try
+            {
+                LogMessage("[RTSS] Настройка конфигурации...");
+
+                string profilesPath = Path.Combine(rtssPath, "Profiles");
+                string pluginsPath = Path.Combine(rtssPath, "Plugins", "Client");
+
+                ForceCreateDirectory(profilesPath);
+                ForceCreateDirectory(pluginsPath);
+
+                string cs2ProfileContent = @"[OSD]
+EnableOSD=1
+EnableBgnd=1
+EnableFill=0
+EnableStat=0
+BaseColor=00FF8000
+BgndColor=00000000
+FillColor=80000000
+PositionX=1
+PositionY=1
+ZoomRatio=2
+CoordinateSpace=0
+EnableFrameColorBar=0
+FrameColorBarMode=0
+RefreshPeriod=500
+IntegerFramerate=1
+MaximumFrametime=0
+EnableFrametimeHistory=0
+FrametimeHistoryWidth=-32
+FrametimeHistoryHeight=-4
+FrametimeHistoryStyle=0
+ScaleToFit=0
+
+[Framerate]
+Limit=64
+LimitDenominator=1
+LimitTime=0
+LimitTimeDenominator=1
+SyncDisplay=0
+SyncScanline0=0
+SyncScanline1=0
+SyncPeriods=0
+SyncLimiter=0
+PassiveWait=1
+ReflexSleep=0
+ReflexSetLatencyMarker=1
+
+[Hooking]
+EnableHooking=1
+HookDirect3D8=1
+HookDirect3D9=1
+HookDXGI=1
+HookDirect3D12=1
+HookOpenGL=1
+HookVulkan=1
+InjectionDelay=15000
+
+[Plugins]
+HotkeyHandler.dll=1
+";
+
+                string lowFpsHex = GetVirtualKeyHexCode(config.GameFPSLowKey);
+                string highFpsHex = GetVirtualKeyHexCode(config.GameFPSHighKey);
+
+                string hotkeyHandlerContent = @"[Settings]
+Hotkey0=46
+Command0=Limit=999
+Hotkey1=45
+Command1=Limit=64
+OSDOnHotkey=00000000
+OSDOffHotkey=00000000
+OSDToggleHotkey=00000000
+LimiterOnHotkey=" + lowFpsHex + @"
+LimiterOffHotkey=" + highFpsHex + @"
+";
+
+                string cs2ProfilePath = Path.Combine(profilesPath, "cs2.exe.cfg");
+                string hotkeyHandlerPath = Path.Combine(pluginsPath, "HotkeyHandler.cfg");
+
+                ForceWriteConfigFile(cs2ProfilePath, cs2ProfileContent, "cs2.exe.cfg");
+                ForceWriteConfigFile(hotkeyHandlerPath, hotkeyHandlerContent, "HotkeyHandler.cfg");
+
+                LogMessage("[RTSS] Конфиги установлены и проверены успешно!");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Критическая ошибка настройки конфигов RTSS: {ex.Message}");
+
+                MessageBox.Show(
+                    $"КРИТИЧЕСКАЯ ОШИБКА!\n\n" +
+                    $"Не удалось записать конфиги RTSS:\n{ex.Message}\n\n" +
+                    $"Убедитесь что:\n" +
+                    $"• Программа запущена от администратора\n" +
+                    $"• RTSS не заблокирован антивирусом\n" +
+                    $"• Папка RTSS доступна для записи",
+                    "CS2 AutoBhop - Ошибка записи конфигов",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+
+                Environment.Exit(1);
+            }
+        }
+
+        private void ForceCreateDirectory(string path)
+        {
+            try
+            {
+                if (!Directory.Exists(path))
+                {
+                    Directory.CreateDirectory(path);
+                    LogMessage($"[RTSS] Создана папка: {path}");
+                }
+
+                if (!Directory.Exists(path))
+                {
+                    throw new DirectoryNotFoundException($"Не удалось создать папку: {path}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Не удалось создать папку {path}: {ex.Message}");
+                throw;
+            }
+        }
+
+        private void ForceWriteConfigFile(string filePath, string content, string fileName)
+        {
+            try
+            {
+
+                File.WriteAllText(filePath, content);
+                LogMessage($"[RTSS] Записан конфиг: {fileName}");
+
+                if (!File.Exists(filePath))
+                {
+                    throw new FileNotFoundException($"Файл {fileName} не был создан");
+                }
+
+                string writtenContent = File.ReadAllText(filePath);
+                if (string.IsNullOrEmpty(writtenContent))
+                {
+                    throw new IOException($"Файл {fileName} пустой - запись не удалась");
+                }
+
+                if (!writtenContent.Contains("[") || writtenContent.Length < content.Length / 2)
+                {
+                    throw new IOException($"Файл {fileName} записан некорректно");
+                }
+
+                LogMessage($"[RTSS] ✓ Конфиг {fileName} проверен и корректен");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Критическая ошибка записи {fileName}: {ex.Message}");
+                throw new IOException($"Не удалось записать конфиг {fileName}: {ex.Message}", ex);
+            }
+        }
+
+        private void StartRTSS()
+        {
+            if (rtssPath == null) return;
+
+            try
+            {
+                string rtssExePath = Path.Combine(rtssPath, "RTSS.exe");
+
+                if (File.Exists(rtssExePath))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = rtssExePath,
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Minimized
+                    });
+
+                    LogMessage("[RTSS] RTSS запущен успешно");
+                    LogMessage("[INFO] Теперь можно запускать игру!");
+
+                    Thread.Sleep(2000);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Ошибка запуска RTSS: {ex.Message}");
+            }
+        }
+
         private void LoadConfig()
         {
             try
@@ -1434,6 +1986,326 @@ echo ""CS2 AutoBhop configs loaded!""";
             {
                 LogMessage($"[ERROR] Ошибка сохранения: {ex.Message}");
             }
+        }
+
+        private string GetVirtualKeyHexCode(string keyName)
+        {
+            uint vkCode = GetVirtualKeyCode(keyName);
+            if (vkCode != 0)
+            {
+                return vkCode.ToString("X8");
+            }
+            return "00000000";
+        }
+
+        private void UpdateRTSSHotkeyConfig()
+        {
+            if (rtssPath == null) return;
+
+            try
+            {
+                string pluginsPath = Path.Combine(rtssPath, "Plugins", "Client");
+                string hotkeyHandlerPath = Path.Combine(pluginsPath, "HotkeyHandler.cfg");
+
+                string lowFpsHex = GetVirtualKeyHexCode(config.GameFPSLowKey);
+                string highFpsHex = GetVirtualKeyHexCode(config.GameFPSHighKey);
+
+                string updatedContent;
+                if (File.Exists(hotkeyHandlerPath))
+                {
+                    LogMessage("[RTSS] Обновление существующего HotkeyHandler.cfg");
+                    string existingContent = File.ReadAllText(hotkeyHandlerPath);
+                    updatedContent = UpdateHotkeyHandlerContent(existingContent, lowFpsHex, highFpsHex);
+                }
+                else
+                {
+                    LogMessage("[RTSS] Создание нового HotkeyHandler.cfg");
+                    updatedContent = @"[Settings]
+Hotkey0=46
+Command0=Limit=999
+Hotkey1=45
+Command1=Limit=64
+OSDOnHotkey=00000000
+OSDOffHotkey=00000000
+OSDToggleHotkey=00000000
+LimiterOnHotkey=" + lowFpsHex + @"
+LimiterOffHotkey=" + highFpsHex + @"
+";
+                }
+
+                ForceWriteConfigFile(hotkeyHandlerPath, updatedContent, "HotkeyHandler.cfg");
+                LogMessage($"[RTSS] Горячие клавиши обновлены: низкий FPS = {config.GameFPSLowKey} ({lowFpsHex}), высокий FPS = {config.GameFPSHighKey} ({highFpsHex})");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Ошибка обновления RTSS конфига: {ex.Message}");
+            }
+        }
+
+        private string UpdateHotkeyHandlerContent(string existingContent, string lowFpsHex, string highFpsHex)
+        {
+            string[] lines = existingContent.Split('\n');
+            bool foundLimiterOn = false;
+            bool foundLimiterOff = false;
+            bool inSettingsSection = false;
+
+            List<string> updatedLines = new List<string>();
+
+            foreach (string line in lines)
+            {
+                string trimmedLine = line.Trim();
+
+                if (trimmedLine == "[Settings]")
+                {
+                    inSettingsSection = true;
+                    updatedLines.Add(line);
+                    continue;
+                }
+
+                if (trimmedLine.StartsWith("[") && trimmedLine != "[Settings]")
+                {
+                    inSettingsSection = false;
+                }
+
+                if (inSettingsSection)
+                {
+                    if (trimmedLine.StartsWith("LimiterOnHotkey="))
+                    {
+                        updatedLines.Add($"LimiterOnHotkey={lowFpsHex}");
+                        foundLimiterOn = true;
+                        continue;
+                    }
+                    else if (trimmedLine.StartsWith("LimiterOffHotkey="))
+                    {
+                        updatedLines.Add($"LimiterOffHotkey={highFpsHex}");
+                        foundLimiterOff = true;
+                        continue;
+                    }
+                }
+
+                updatedLines.Add(line);
+            }
+
+            if (!foundLimiterOn || !foundLimiterOff)
+            {
+
+                for (int i = 0; i < updatedLines.Count; i++)
+                {
+                    if (updatedLines[i].Trim() == "[Settings]")
+                    {
+                        int insertIndex = i + 1;
+
+                        while (insertIndex < updatedLines.Count &&
+                               !updatedLines[insertIndex].Trim().StartsWith("["))
+                        {
+                            insertIndex++;
+                        }
+
+                        if (!foundLimiterOn)
+                        {
+                            updatedLines.Insert(insertIndex, $"LimiterOnHotkey={lowFpsHex}");
+                            insertIndex++;
+                        }
+                        if (!foundLimiterOff)
+                        {
+                            updatedLines.Insert(insertIndex, $"LimiterOffHotkey={highFpsHex}");
+                        }
+                        break;
+                    }
+                }
+            }
+
+            return string.Join("\n", updatedLines);
+        }
+
+        private void RestartRTSS()
+        {
+            if (rtssPath == null) return;
+
+            try
+            {
+                LogMessage("[RTSS] Перезапуск RivaTuner...");
+
+                KillRTSSProcess();
+
+                Thread.Sleep(1000);
+
+                StartRTSS();
+
+                LogMessage("[RTSS] RivaTuner успешно перезапущен с новыми настройками!");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[ERROR] Ошибка перезапуска RTSS: {ex.Message}");
+            }
+        }
+
+        private bool IsRTSSConfigUpToDate()
+        {
+            if (rtssPath == null) return false;
+
+            try
+            {
+                string pluginsPath = Path.Combine(rtssPath, "Plugins", "Client");
+                string hotkeyHandlerPath = Path.Combine(pluginsPath, "HotkeyHandler.cfg");
+
+                if (!File.Exists(hotkeyHandlerPath))
+                {
+                    LogMessage("[RTSS] HotkeyHandler.cfg не найден");
+                    return false;
+                }
+
+                string content = File.ReadAllText(hotkeyHandlerPath);
+
+                string expectedLowFpsHex = GetVirtualKeyHexCode(config.GameFPSLowKey);
+                string expectedHighFpsHex = GetVirtualKeyHexCode(config.GameFPSHighKey);
+
+                if (!content.Contains("[Settings]"))
+                {
+                    LogMessage("[RTSS] Секция [Settings] не найдена в HotkeyHandler.cfg");
+                    return false;
+                }
+
+                bool hasCorrectLowFps = false;
+                bool hasCorrectHighFps = false;
+
+                string[] lines = content.Split('\n');
+                foreach (string line in lines)
+                {
+                    string trimmedLine = line.Trim();
+
+                    if (trimmedLine.StartsWith("LimiterOnHotkey="))
+                    {
+                        string currentValue = trimmedLine.Substring("LimiterOnHotkey=".Length);
+                        hasCorrectLowFps = currentValue.Equals(expectedLowFpsHex, StringComparison.OrdinalIgnoreCase);
+                        LogMessage($"[RTSS] LimiterOnHotkey: текущий = {currentValue}, ожидаемый = {expectedLowFpsHex}, совпадает = {hasCorrectLowFps}");
+                    }
+                    else if (trimmedLine.StartsWith("LimiterOffHotkey="))
+                    {
+                        string currentValue = trimmedLine.Substring("LimiterOffHotkey=".Length);
+                        hasCorrectHighFps = currentValue.Equals(expectedHighFpsHex, StringComparison.OrdinalIgnoreCase);
+                        LogMessage($"[RTSS] LimiterOffHotkey: текущий = {currentValue}, ожидаемый = {expectedHighFpsHex}, совпадает = {hasCorrectHighFps}");
+                    }
+                }
+
+                bool isUpToDate = hasCorrectLowFps && hasCorrectHighFps;
+                LogMessage($"[RTSS] Конфиг актуален: {isUpToDate}");
+
+                return isUpToDate;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[RTSS] Ошибка проверки конфига: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool AskForRTSSConfigPermission()
+        {
+            var result = MessageBox.Show(
+                "RivaTuner Statistics Server найден!\n\n" +
+                "Для корректной работы программы необходимо настроить конфигурации RTSS:\n\n" +
+                "• Профиль для CS2 с ограничением FPS\n" +
+                "• Глобальные горячие клавиши для переключения FPS\n" +
+                "• Плагин HotkeyHandler для обработки нажатий\n\n" +
+                "Это может изменить некоторые существующие настройки RTSS.\n\n" +
+                "Разрешить программе настроить RTSS?",
+                "CS2 AutoBhop - Настройка RivaTuner",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button1
+            );
+
+            return result == DialogResult.Yes;
+        }
+
+        private void HandleRTSSConfigDeclined()
+        {
+            var result = MessageBox.Show(
+                "Без настройки RTSS программа будет работать в ограниченном режиме:\n\n" +
+                "✓ AutoBhop будет работать\n" +
+                "✗ Автоматическое переключение FPS НЕ будет работать\n" +
+                "✗ Горячие клавиши F5/F6 НЕ будут работать\n\n" +
+                "Вы сможете настроить RTSS позже через меню программы.\n\n" +
+                "Продолжить работу без настройки RTSS?",
+                "CS2 AutoBhop - Ограниченный режим",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1
+            );
+
+            if (result == DialogResult.Yes)
+            {
+                LogMessage("[RTSS] Работа в ограниченном режиме без RTSS");
+                LogMessage("[WARNING] FPS Control не будет работать без настройки RTSS");
+
+                config.FPSMode = false;
+                SaveConfig();
+
+                rtssPath = null;
+            }
+            else
+            {
+                LogMessage("[RTSS] Пользователь передумал, показываем диалог настройки заново");
+
+                if (AskForRTSSConfigPermission())
+                {
+                    LogMessage("[RTSS] Пользователь разрешил настройку RTSS");
+                    KillRTSSProcess();
+                    SetupRTSSConfigs();
+                    StartRTSS();
+                }
+                else
+                {
+
+                    HandleRTSSConfigDeclined();
+                }
+            }
+        }
+
+        private void SetupRTSSLater()
+        {
+            Console.WriteLine("Настройка RTSS...");
+            Console.WriteLine();
+
+            string? foundRtssPath = FindRTSSInstallPath();
+            if (foundRtssPath == null)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("RTSS не найден!");
+                Console.ResetColor();
+                Console.WriteLine("Убедитесь что RivaTuner Statistics Server установлен.");
+                Thread.Sleep(3000);
+                return;
+            }
+
+            Console.WriteLine($"RTSS найден: {foundRtssPath}");
+
+            if (AskForRTSSConfigPermission())
+            {
+                rtssPath = foundRtssPath;
+
+                Console.WriteLine("Настройка RTSS конфигов...");
+                KillRTSSProcess();
+                SetupRTSSConfigs();
+                StartRTSS();
+
+                config.FPSMode = true;
+                SaveConfig();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("RTSS успешно настроен!");
+                Console.WriteLine("FPS Control теперь работает!");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("Настройка RTSS отменена.");
+                Console.ResetColor();
+            }
+
+            Thread.Sleep(3000);
         }
     }
 }
