@@ -139,43 +139,24 @@ namespace CS2AutoBhop
         public class Config
         {
             public bool BhopEnabled { get; set; } = true;
-            public bool FPSMode { get; set; } = true;
-            public string ScrollDirection { get; set; } = "Down";
-            public int ScrollDelay { get; set; } = 1;
 
             public string BhopToggleKey { get; set; } = "F2";
-            public string FPSToggleKey { get; set; } = "F3";
             public string JumpActivationKey { get; set; } = "Space";
-
-            public string JumpKey { get; set; } = "mwheeldown";
-
-            public string GameJumpBind { get; set; } = "mwheeldown";
-            public string GameFPSLowKey { get; set; } = "F5";
-            public string GameFPSHighKey { get; set; } = "F6";
+            public string RadioKey { get; set; } = "6";
         }
 
         private Config config = new();
         private System.Threading.Timer? bhopTimer;
         private System.Threading.Timer? monitorTimer;
         private bool isJumping = false;
-        private bool fpsOn = false;
         private IntPtr cs2Handle = IntPtr.Zero;
         private bool lastBhopToggleState = false;
-        private bool lastFPSToggleState = false;
         private Dictionary<string, uint> keyMap = new Dictionary<string, uint>();
         private readonly object logLock = new();
         private int logCount = 0;
-        private string? rtssPath = null;
 
         public void Run()
         {
-
-            if (!IsRunningAsAdministrator())
-            {
-                RequestAdministratorRights();
-                return;
-            }
-
             try
             {
                 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -183,7 +164,6 @@ namespace CS2AutoBhop
             }
             catch
             {
-
                 Console.OutputEncoding = System.Text.Encoding.Default;
                 Console.InputEncoding = System.Text.Encoding.Default;
             }
@@ -191,8 +171,6 @@ namespace CS2AutoBhop
 
             InitializeKeyMap();
             LoadConfig();
-
-            CheckRTSSSetup();
 
             ShowInitialDisplay();
 
@@ -213,7 +191,6 @@ namespace CS2AutoBhop
 
         private void CheckHotkeys()
         {
-
             uint bhopToggleVK = GetVirtualKeyCode(config.BhopToggleKey);
             if (bhopToggleVK != 0)
             {
@@ -226,20 +203,6 @@ namespace CS2AutoBhop
                     UpdateStatusInPlace();
                 }
                 lastBhopToggleState = bhopTogglePressed;
-            }
-
-            uint fpsToggleVK = GetVirtualKeyCode(config.FPSToggleKey);
-            if (fpsToggleVK != 0)
-            {
-                bool fpsTogglePressed = (GetAsyncKeyState((int)fpsToggleVK) & 0x8000) != 0;
-                if (fpsTogglePressed && !lastFPSToggleState)
-                {
-                    config.FPSMode = !config.FPSMode;
-                    SaveConfig();
-                    LogMessage($"[FPS] FPS Control: {(config.FPSMode ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН")}");
-                    UpdateStatusInPlace();
-                }
-                lastFPSToggleState = fpsTogglePressed;
             }
 
             bool insertPressed = (GetAsyncKeyState((int)VK_INSERT) & 0x8000) != 0;
@@ -276,7 +239,6 @@ namespace CS2AutoBhop
             Console.ResetColor();
             Console.WriteLine($"  Insert - настройки");
             Console.WriteLine($"  {config.BhopToggleKey}     - переключить Bhop");
-            Console.WriteLine($"  {config.FPSToggleKey}     - переключить FPS Control");
             Console.WriteLine($"  {config.JumpActivationKey}  - (в игре) активировать бхоп");
 
             Console.WriteLine();
@@ -291,36 +253,11 @@ namespace CS2AutoBhop
 
         private void ShowStatus()
         {
-
             Console.Write("  [BHOP] Auto Bhop:  ");
             Console.ForegroundColor = config.BhopEnabled ? ConsoleColor.Green : ConsoleColor.Red;
             string bhopText = config.BhopEnabled ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН";
             Console.Write(bhopText);
             Console.Write(new string(' ', Math.Max(0, 50 - bhopText.Length)));
-            Console.WriteLine();
-            Console.ResetColor();
-
-            Console.Write("  [FPS] FPS Control: ");
-            string fpsText;
-            ConsoleColor fpsColor;
-            if (config.FPSMode && config.BhopEnabled)
-            {
-                fpsText = "АКТИВЕН";
-                fpsColor = ConsoleColor.Green;
-            }
-            else if (config.FPSMode && !config.BhopEnabled)
-            {
-                fpsText = "ВКЛЮЧЕН (ждет Bhop)";
-                fpsColor = ConsoleColor.Yellow;
-            }
-            else
-            {
-                fpsText = "ВЫКЛЮЧЕН";
-                fpsColor = ConsoleColor.Red;
-            }
-            Console.ForegroundColor = fpsColor;
-            Console.Write(fpsText);
-            Console.Write(new string(' ', Math.Max(0, 50 - fpsText.Length)));
             Console.WriteLine();
             Console.ResetColor();
 
@@ -377,44 +314,13 @@ namespace CS2AutoBhop
             isJumping = true;
             LogMessage("[JUMP] Прыжок начат");
 
-            if (config.BhopEnabled && config.FPSMode && !fpsOn)
-            {
-                uint lowFpsVK = GetVirtualKeyCode(config.GameFPSLowKey);
-                if (lowFpsVK != 0)
-                {
-                    SendKey(lowFpsVK);
-                    fpsOn = true;
-                    LogMessage($"[FPS] {config.GameFPSLowKey} (низкий FPS для бхопа)");
-                }
-            }
-            else if (config.BhopEnabled && !config.FPSMode)
-            {
-                uint highFpsVK = GetVirtualKeyCode(config.GameFPSHighKey);
-                if (highFpsVK != 0)
-                {
-                    SendKey(highFpsVK);
-                    LogMessage($"[FPS] {config.GameFPSHighKey} (высокий FPS)");
-                }
-            }
-
-            bhopTimer = new System.Threading.Timer(BhopTick, null, 0, config.ScrollDelay);
+            bhopTimer = new System.Threading.Timer(BhopTick, null, 0, 1);
         }
 
         private void HandleJumpRelease()
         {
             isJumping = false;
             LogMessage("[JUMP] Прыжок завершен");
-
-            if (config.BhopEnabled && config.FPSMode && fpsOn)
-            {
-                uint highFpsVK = GetVirtualKeyCode(config.GameFPSHighKey);
-                if (highFpsVK != 0)
-                {
-                    SendKey(highFpsVK);
-                    fpsOn = false;
-                    LogMessage($"[FPS] {config.GameFPSHighKey} (высокий FPS после бхопа)");
-                }
-            }
 
             bhopTimer?.Dispose();
         }
@@ -423,22 +329,13 @@ namespace CS2AutoBhop
         {
             if (!isJumping || !config.BhopEnabled) return;
 
-            if (config.GameJumpBind == "mwheeldown" || config.GameJumpBind == "mwheelup")
+            uint radioKeyVK = GetVirtualKeyCode(config.RadioKey);
+            if (radioKeyVK != 0)
             {
-
-                int delta = config.GameJumpBind == "mwheeldown" ? -WHEEL_DELTA : WHEEL_DELTA;
-                SendMouseWheel(delta);
-            }
-            else
-            {
-
-                uint jumpVK = GetVirtualKeyCodeForJump(config.GameJumpBind);
-                if (jumpVK != 0)
-                {
-                    SendKey(jumpVK);
-                }
+                SendKey(radioKeyVK);
             }
         }
+
         private void SendKey(uint keyCode)
         {
             INPUT[] inputs = new INPUT[2];
@@ -451,7 +348,7 @@ namespace CS2AutoBhop
                     ki = new KEYBDINPUT
                     {
                         wVk = (ushort)keyCode,
-                        wScan = (ushort)MapVirtualKey(keyCode, 0),
+                        wScan = 0,
                         dwFlags = 0,
                         time = 0,
                         dwExtraInfo = UIntPtr.Zero
@@ -467,7 +364,7 @@ namespace CS2AutoBhop
                     ki = new KEYBDINPUT
                     {
                         wVk = (ushort)keyCode,
-                        wScan = (ushort)MapVirtualKey(keyCode, 0),
+                        wScan = 0,
                         dwFlags = KEYEVENTF_KEYUP,
                         time = 0,
                         dwExtraInfo = UIntPtr.Zero
@@ -476,23 +373,6 @@ namespace CS2AutoBhop
             };
 
             SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
-        }
-
-        private uint GetVirtualKeyCodeForJump(string jumpKey)
-        {
-
-            switch (jumpKey.ToLower())
-            {
-                case "mouse1": return VK_LBUTTON;
-                case "mouse2": return VK_RBUTTON;
-                case "mouse3": return VK_MBUTTON;
-                case "mouse4": return VK_XBUTTON1;
-                case "mouse5": return VK_XBUTTON2;
-                case "space": return VK_SPACE;
-                default:
-
-                    return GetVirtualKeyCode(jumpKey);
-            }
         }
 
         private void InitializeKeyMap()
@@ -632,35 +512,15 @@ namespace CS2AutoBhop
             Console.WriteLine(">> ПРОГРАММНЫЕ ХОТКЕИ:");
             Console.ResetColor();
             Console.WriteLine($"  1. Переключение Bhop: {config.BhopToggleKey}");
-            Console.WriteLine($"  2. Переключение FPS Control: {config.FPSToggleKey}");
-            Console.WriteLine($"  3. Активация прыжка: {config.JumpActivationKey}");
-
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine(">> ИГРОВЫЕ БИНДЫ:");
-            Console.ResetColor();
-            Console.WriteLine($"  4. Кнопка для прыжка: {config.GameJumpBind}");
-            Console.WriteLine($"  5. Кнопка низкого FPS: {config.GameFPSLowKey}");
-            Console.WriteLine($"  6. Кнопка высокого FPS: {config.GameFPSHighKey}");
-
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine(">> НАСТРОЙКИ ПРЫЖКА:");
-            Console.ResetColor();
-            Console.WriteLine($"  7. Задержка нажатий: {config.ScrollDelay}ms");
+            Console.WriteLine($"  2. Активация прыжка: {config.JumpActivationKey}");
+            Console.WriteLine($"  3. Кнопка прыжка в игре: {config.RadioKey}");
 
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine(">> ДРУГИЕ:");
             Console.ResetColor();
-            Console.WriteLine(" 10. Пересоздать конфиги игры");
-            Console.WriteLine(" 11. Сбросить все настройки к дефолтным");
-            if (rtssPath == null)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(" 12. Настроить RTSS (требуется для FPS Control)");
-                Console.ResetColor();
-            }
+            Console.WriteLine("  4. Пересоздать конфиги игры");
+            Console.WriteLine("  5. Сбросить все настройки к дефолтным");
 
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Red;
@@ -669,7 +529,6 @@ namespace CS2AutoBhop
 
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("[WARNING] Игровые бинды (4-6) требуют ПЕРЕЗАПУСК CS2!");
             Console.WriteLine("[HELP] Если не работает: exec autoexec в консоли игры");
             Console.WriteLine("[HELP] Или добавь -exec autoexec в параметры запуска Steam");
             Console.ResetColor();
@@ -690,47 +549,18 @@ namespace CS2AutoBhop
                     config.BhopToggleKey = ChangeHotkey("Переключение Bhop", config.BhopToggleKey);
                     break;
                 case "2":
-                    config.FPSToggleKey = ChangeHotkey("Переключение FPS Control", config.FPSToggleKey);
-                    break;
-                case "3":
                     config.JumpActivationKey = ChangeHotkey("Активация прыжка", config.JumpActivationKey);
                     break;
+                case "3":
+                    config.RadioKey = ChangeHotkey("Кнопка прыжка в игре", config.RadioKey);
+                    UpdateGameConfigs();
+                    break;
                 case "4":
-                    config.GameJumpBind = ChangeGameJumpBind("Кнопка для прыжка", config.GameJumpBind);
-                    UpdateGameConfigs();
-                    break;
-                case "5":
-                    config.GameFPSLowKey = ChangeGameHotkey("Кнопка низкого FPS", config.GameFPSLowKey);
-                    UpdateGameConfigs();
-                    UpdateRTSSHotkeyConfig();
-                    RestartRTSS();
-                    break;
-                case "6":
-                    config.GameFPSHighKey = ChangeGameHotkey("Кнопка высокого FPS", config.GameFPSHighKey);
-                    UpdateGameConfigs();
-                    UpdateRTSSHotkeyConfig();
-                    RestartRTSS();
-                    break;
-                case "7":
-                    ChangeScrollDelay();
-                    break;
-                case "10":
                     CreateCS2Configs();
                     Thread.Sleep(2000);
                     break;
-                case "11":
+                case "5":
                     ResetToDefaults();
-                    break;
-                case "12":
-                    if (rtssPath == null)
-                    {
-                        SetupRTSSLater();
-                    }
-                    else
-                    {
-                        Console.WriteLine("RTSS уже настроен!");
-                        Thread.Sleep(1000);
-                    }
                     break;
                 case "0":
                     ShowInitialDisplay();
@@ -772,239 +602,15 @@ namespace CS2AutoBhop
             return currentHotkey;
         }
 
-        private string ChangeGameBind(string description, string currentBind, string[] options)
-        {
-            Console.WriteLine($"Изменение: {description}");
-            Console.WriteLine("Доступные опции:");
-            for (int i = 0; i < options.Length; i++)
-            {
-                Console.WriteLine($"  {i + 1}. {options[i]}");
-            }
-            Console.Write("Введите номер: ");
-
-            ConsoleKeyInfo key = Console.ReadKey();
-            Console.WriteLine();
-
-            if (char.IsDigit(key.KeyChar))
-            {
-                int choice = key.KeyChar - '0';
-                if (choice > 0 && choice <= options.Length)
-                {
-                    Console.WriteLine($"Бинд изменен на: {options[choice - 1]}");
-                    Thread.Sleep(1500);
-                    return options[choice - 1];
-                }
-                else
-                {
-                    Console.WriteLine("Неверный номер!");
-                }
-            }
-            else
-            {
-                Console.WriteLine("Неверный ввод!");
-            }
-            Thread.Sleep(1500);
-            return currentBind;
-        }
-
-        private string ChangeGameHotkey(string description, string currentHotkey)
-        {
-            Console.WriteLine($"Изменение: {description}");
-            Console.WriteLine("Доступные клавиши:");
-            Console.WriteLine("F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12");
-            Console.WriteLine("Space, Enter, Insert, LShift, RShift, LControl, RControl, LAlt, RAlt");
-            Console.WriteLine("Mouse1, Mouse2, Mouse3, Mouse4, Mouse5");
-            Console.WriteLine("+ любые буквы/цифры (A-Z, 0-9)");
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("ВНИМАНИЕ: Убедитесь что клавиша не используется в игре!");
-            Console.ResetColor();
-            Console.Write("Введите клавишу: ");
-
-            string? input = Console.ReadLine()?.Trim();
-            if (!string.IsNullOrEmpty(input))
-            {
-                string normalizedKey = NormalizeKeyName(input);
-                if (keyMap.ContainsKey(normalizedKey))
-                {
-
-                    string gameBind = normalizedKey.ToLower();
-                    if (normalizedKey == "Space") gameBind = "space";
-                    else if (normalizedKey == "Enter") gameBind = "enter";
-                    else if (normalizedKey == "LShift") gameBind = "lshift";
-                    else if (normalizedKey == "RShift") gameBind = "rshift";
-                    else if (normalizedKey == "LControl") gameBind = "lcontrol";
-                    else if (normalizedKey == "RControl") gameBind = "rcontrol";
-                    else if (normalizedKey == "LAlt") gameBind = "lalt";
-                    else if (normalizedKey == "RAlt") gameBind = "ralt";
-                    else if (normalizedKey == "Mouse1") gameBind = "mouse1";
-                    else if (normalizedKey == "Mouse2") gameBind = "mouse2";
-                    else if (normalizedKey == "Mouse3") gameBind = "mouse3";
-                    else if (normalizedKey == "Mouse4") gameBind = "mouse4";
-                    else if (normalizedKey == "Mouse5") gameBind = "mouse5";
-
-                    Console.WriteLine($"Игровая клавиша изменена на: {gameBind}");
-                    Thread.Sleep(1500);
-                    return gameBind;
-                }
-            }
-
-            Console.WriteLine("Неверная клавиша!");
-            Thread.Sleep(1500);
-            return currentHotkey;
-        }
-
-        private string ChangeJumpKey(string description, string currentJumpKey)
-        {
-            Console.WriteLine($"Изменение: {description}");
-            Console.WriteLine("Доступные кнопки для прыжка:");
-            Console.WriteLine("mwheeldown, mwheelup - колесико мыши");
-            Console.WriteLine("Mouse1, Mouse2, Mouse3, Mouse4, Mouse5 - кнопки мыши");
-            Console.WriteLine("Space, F1-F12, A-Z, 0-9 - клавиатура");
-            Console.Write("Введите кнопку: ");
-
-            string? input = Console.ReadLine()?.Trim()?.ToLower();
-            if (!string.IsNullOrEmpty(input))
-            {
-
-                if (input == "mwheeldown" || input == "mwheelup")
-                {
-                    Console.WriteLine($"Кнопка прыжка изменена на: {input}");
-
-                    config.GameJumpBind = input;
-                    UpdateGameConfigs();
-                    Thread.Sleep(1500);
-                    return input;
-                }
-
-                if (input.StartsWith("mouse") && input.Length == 6 && char.IsDigit(input[5]))
-                {
-                    string jumpKey = char.ToUpper(input[0]) + input.Substring(1);
-
-                    config.GameJumpBind = input.ToLower();
-                    UpdateGameConfigs();
-                    Console.WriteLine($"Кнопка прыжка изменена на: {jumpKey}");
-                    Thread.Sleep(1500);
-                    return jumpKey;
-                }
-
-                string normalizedKey = NormalizeKeyName(input);
-                if (keyMap.ContainsKey(normalizedKey))
-                {
-
-                    string gameBind = ConvertToGameBind(normalizedKey);
-                    config.GameJumpBind = gameBind;
-                    UpdateGameConfigs();
-                    Console.WriteLine($"Кнопка прыжка изменена на: {normalizedKey}");
-                    Thread.Sleep(1500);
-                    return normalizedKey;
-                }
-            }
-
-            Console.WriteLine("Неверная кнопка!");
-            Thread.Sleep(1500);
-            return currentJumpKey;
-        }
-
-        private string ConvertToGameBind(string normalizedKey)
-        {
-
-            switch (normalizedKey)
-            {
-                case "Space": return "space";
-                case "Enter": return "enter";
-                case "Insert": return "ins";
-                case "LShift": return "shift";
-                case "RShift": return "shift";
-                case "LControl": return "ctrl";
-                case "RControl": return "ctrl";
-                case "LAlt": return "alt";
-                case "RAlt": return "alt";
-                default:
-
-                    return normalizedKey.ToLower();
-            }
-        }
-
-        private string ChangeGameJumpBind(string description, string currentBind)
-        {
-            Console.WriteLine($"Изменение: {description}");
-            Console.WriteLine("Доступные бинды:");
-            Console.WriteLine("mwheeldown, mwheelup, mouse1, mouse2, mouse3, mouse4, mouse5");
-            Console.WriteLine("F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12");
-            Console.WriteLine("Space, Enter, Insert, LShift, RShift, LControl, RControl, LAlt, RAlt");
-            Console.WriteLine("+ любые буквы/цифры (A-Z, 0-9)");
-            Console.Write("Введите бинд: ");
-
-            string? input = Console.ReadLine()?.Trim()?.ToLower();
-            if (!string.IsNullOrEmpty(input))
-            {
-
-                if (input == "mwheeldown" || input == "mwheelup" ||
-                    input == "mouse1" || input == "mouse2" || input == "mouse3" ||
-                    input == "mouse4" || input == "mouse5")
-                {
-                    Console.WriteLine($"Игровой бинд изменен на: {input}");
-                    Thread.Sleep(1500);
-                    return input;
-                }
-
-                string normalizedKey = NormalizeKeyName(input);
-                if (keyMap.ContainsKey(normalizedKey))
-                {
-                    string gameBind = normalizedKey.ToLower();
-
-                    if (normalizedKey == "Space") gameBind = "space";
-                    else if (normalizedKey == "Enter") gameBind = "enter";
-                    else if (normalizedKey == "LShift") gameBind = "lshift";
-                    else if (normalizedKey == "RShift") gameBind = "rshift";
-                    else if (normalizedKey == "LControl") gameBind = "lcontrol";
-                    else if (normalizedKey == "RControl") gameBind = "rcontrol";
-                    else if (normalizedKey == "LAlt") gameBind = "lalt";
-                    else if (normalizedKey == "RAlt") gameBind = "ralt";
-                    else if (normalizedKey == "Mouse1") gameBind = "mouse1";
-                    else if (normalizedKey == "Mouse2") gameBind = "mouse2";
-                    else if (normalizedKey == "Mouse3") gameBind = "mouse3";
-                    else if (normalizedKey == "Mouse4") gameBind = "mouse4";
-                    else if (normalizedKey == "Mouse5") gameBind = "mouse5";
-
-                    Console.WriteLine($"Игровой бинд изменен на: {gameBind}");
-                    Thread.Sleep(1500);
-                    return gameBind;
-                }
-            }
-
-            Console.WriteLine("Неверный бинд!");
-            Thread.Sleep(1500);
-            return currentBind;
-        }
-
-        private void ChangeScrollDelay()
-        {
-            Console.Write($"Текущая задержка: {config.ScrollDelay}ms. Введите новое значение (1-100): ");
-            string? input = Console.ReadLine()?.Trim();
-
-            if (!string.IsNullOrEmpty(input) && int.TryParse(input, out int delay) && delay >= 1 && delay <= 100)
-            {
-                config.ScrollDelay = delay;
-                Console.WriteLine($"Задержка изменена на: {delay}ms");
-            }
-            else
-            {
-                Console.WriteLine("Неверное значение! Используйте число от 1 до 100.");
-            }
-            Thread.Sleep(1500);
-        }
-
         private void ResetToDefaults()
         {
             Console.WriteLine("Сбросить все настройки к дефолтным значениям?");
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("ЭТО СБРОСИТ:");
-            Console.WriteLine("• Программные хоткеи (F2, F3, Space)");
-            Console.WriteLine("• Игровые бинды (mwheeldown, F5, F6)");
-            Console.WriteLine("• Задержку скролла (1ms)");
-            Console.WriteLine("• Режимы Bhop и FPS (включены)");
+            Console.WriteLine("• Программные хоткеи (F2, Space)");
+            Console.WriteLine("• Кнопку прыжка в игре (6)");
+            Console.WriteLine("• Режим Bhop (включен)");
             Console.ResetColor();
             Console.WriteLine();
             Console.Write("Введите 'yes' для подтверждения: ");
@@ -1012,18 +618,10 @@ namespace CS2AutoBhop
             string? confirmation = Console.ReadLine()?.Trim().ToLower();
             if (confirmation == "yes")
             {
-
                 config.BhopEnabled = true;
-                config.FPSMode = true;
-                config.ScrollDirection = "Down";
-                config.ScrollDelay = 1;
                 config.BhopToggleKey = "F2";
-                config.FPSToggleKey = "F3";
                 config.JumpActivationKey = "Space";
-                config.JumpKey = "mwheeldown";
-                config.GameJumpBind = "mwheeldown";
-                config.GameFPSLowKey = "f5";
-                config.GameFPSHighKey = "f6";
+                config.RadioKey = "6";
 
                 SaveConfig();
 
@@ -1034,10 +632,6 @@ namespace CS2AutoBhop
 
                 Console.WriteLine("[INFO] Обновление игровых конфигов...");
                 UpdateGameConfigs();
-
-                Console.WriteLine("[INFO] Обновление конфигов RTSS...");
-                UpdateRTSSHotkeyConfig();
-                RestartRTSS();
 
                 Console.WriteLine("[INFO] Сброс завершен!");
             }
@@ -1069,13 +663,16 @@ namespace CS2AutoBhop
                     return;
                 }
 
+                string radioKey = config.RadioKey.ToLower();
                 string autoexecPath = Path.Combine(cfgPath, "autoexec.cfg");
-                string autoexecContent = $@"// CS2 AutoBhop Configuration
+                string autoexecContent = $@"alias roger ""slot1;radio""
+alias negative ""slot2;radio""
+alias cheer ""slot3;radio""
+alias holdpos ""slot4;radio""
+alias followme ""slot5;radio""
 
-alias +jump_ ""exec +jump""
-alias -jump_ ""exec -jump""
-bind {config.GameJumpBind} ""+jump_""
-{(config.GameJumpBind != "mwheeldown" && config.GameJumpBind != "mwheelup" ? "" : "bind " + (config.GameJumpBind == "mwheeldown" ? "mwheelup" : "mwheeldown") + " \"+jump_\"")}
+alias thanks ""jump 1 0 0;jump -999 0 0;radio""
+bind ""{radioKey}"" ""radio;jump 1 0 0""
 
 echo ""CS2 AutoBhop configs loaded!""";
 
@@ -1186,26 +783,21 @@ echo ""CS2 AutoBhop configs loaded!""";
 
                 bool gameWasRunning = IsCS2Running();
 
-                string jumpPlusContent = @"setinfo jump 0
-toggle jump ""1 0 0""";
+                string radioKey = config.RadioKey.ToLower();
+                string autoexecContent = $@"alias roger ""slot1;radio""
+alias negative ""slot2;radio""
+alias cheer ""slot3;radio""
+alias holdpos ""slot4;radio""
+alias followme ""slot5;radio""
 
-                string jumpMinusContent = @"setinfo jump 0
-toggle jump ""-999 0 0""";
-
-                string autoexecContent = $@"// CS2 AutoBhop Configuration
-
-alias +jump_ ""exec +jump""
-alias -jump_ ""exec -jump""
-bind {config.GameJumpBind} ""+jump_""
-{(config.GameJumpBind != "mwheeldown" && config.GameJumpBind != "mwheelup" ? "" : "bind " + (config.GameJumpBind == "mwheeldown" ? "mwheelup" : "mwheeldown") + " \"+jump_\"")}
+alias thanks ""jump 1 0 0;jump -999 0 0;radio""
+bind ""{radioKey}"" ""radio;jump 1 0 0""
 
 echo ""CS2 AutoBhop configs loaded!""";
 
                 int configsCreated = 0;
                 int configsSkipped = 0;
 
-                configsCreated += CreateConfigIfNeeded(Path.Combine(cfgPath, "+jump.cfg"), jumpPlusContent, ref configsSkipped);
-                configsCreated += CreateConfigIfNeeded(Path.Combine(cfgPath, "-jump.cfg"), jumpMinusContent, ref configsSkipped);
                 configsCreated += CreateConfigIfNeeded(Path.Combine(cfgPath, "autoexec.cfg"), autoexecContent, ref configsSkipped);
 
                 if (configsCreated > 0)
@@ -1480,481 +1072,6 @@ echo ""CS2 AutoBhop configs loaded!""";
             }
         }
 
-        private bool IsRunningAsAdministrator()
-        {
-            try
-            {
-                WindowsIdentity identity = WindowsIdentity.GetCurrent();
-                WindowsPrincipal principal = new WindowsPrincipal(identity);
-                return principal.IsInRole(WindowsBuiltInRole.Administrator);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private void RequestAdministratorRights()
-        {
-            try
-            {
-                Console.Clear();
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("╔══════════════════════════════════════╗");
-                Console.WriteLine("║         ТРЕБУЮТСЯ ПРАВА АДМИНА       ║");
-                Console.WriteLine("╚══════════════════════════════════════╝");
-                Console.ResetColor();
-                Console.WriteLine();
-                Console.WriteLine("Для записи конфигов RTSS требуются права администратора.");
-                Console.WriteLine("Программа будет перезапущена с повышенными правами...");
-                Console.WriteLine();
-                Console.WriteLine("Нажмите любую клавишу для продолжения...");
-                Console.ReadKey();
-
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = Process.GetCurrentProcess().MainModule?.FileName ?? Environment.ProcessPath ?? "AutoBhop.exe",
-                    UseShellExecute = true,
-                    Verb = "runas",
-                    WindowStyle = ProcessWindowStyle.Normal
-                };
-
-                try
-                {
-                    Process.Start(startInfo);
-                    Environment.Exit(0);
-                }
-                catch (System.ComponentModel.Win32Exception)
-                {
-
-                    Console.Clear();
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("╔══════════════════════════════════════╗");
-                    Console.WriteLine("║      ОТКАЗАНО В ПРАВАХ АДМИНА        ║");
-                    Console.WriteLine("╚══════════════════════════════════════╝");
-                    Console.ResetColor();
-                    Console.WriteLine();
-                    Console.WriteLine("Без прав администратора программа не может:");
-                    Console.WriteLine("• Записывать конфиги RTSS");
-                    Console.WriteLine("• Останавливать процессы RTSS");
-                    Console.WriteLine("• Запускать RTSS");
-                    Console.WriteLine();
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("Программа будет закрыта.");
-                    Console.WriteLine("Для работы требуется запуск от имени администратора!");
-                    Console.ResetColor();
-                    Console.WriteLine();
-                    Console.WriteLine("Нажмите любую клавишу для выхода...");
-                    Console.ReadKey();
-                    Environment.Exit(1);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка при запросе прав администратора: {ex.Message}");
-                Console.WriteLine("Нажмите любую клавишу для выхода...");
-                Console.ReadKey();
-                Environment.Exit(1);
-            }
-        }
-
-        private void CheckRTSSSetup()
-        {
-            LogMessage("[RTSS] Проверка RivaTuner Statistics Server...");
-
-            string? rtssPath = FindRTSSInstallPath();
-            if (rtssPath == null)
-            {
-                LogMessage("[RTSS] RTSS не найден автоматически");
-                HandleRTSSNotFound();
-                return;
-            }
-
-            LogMessage($"[RTSS] RTSS найден: {rtssPath}");
-            this.rtssPath = rtssPath;
-
-            if (IsRTSSConfigUpToDate())
-            {
-                LogMessage("[RTSS] Конфиги RTSS актуальны, запускаем без изменений");
-                StartRTSS();
-                return;
-            }
-
-            LogMessage("[RTSS] Конфиги RTSS требуют обновления");
-
-            if (!AskForRTSSConfigPermission())
-            {
-                LogMessage("[RTSS] Пользователь отказался от настройки RTSS");
-                HandleRTSSConfigDeclined();
-                return;
-            }
-
-            LogMessage("[RTSS] Пользователь разрешил настройку RTSS");
-            KillRTSSProcess();
-            SetupRTSSConfigs();
-            StartRTSS();
-        }
-
-        private string? FindRTSSInstallPath()
-        {
-            try
-            {
-
-                string[] possiblePaths = {
-                    @"C:\Program Files (x86)\RivaTuner Statistics Server",
-                    @"C:\Program Files\RivaTuner Statistics Server",
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "RivaTuner Statistics Server"),
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "RivaTuner Statistics Server")
-                };
-
-                foreach (string path in possiblePaths)
-                {
-                    if (Directory.Exists(path) && File.Exists(Path.Combine(path, "RTSS.exe")))
-                    {
-                        return path;
-                    }
-                }
-
-                string[] registryPaths = {
-                    @"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Unwinder\RTSS",
-                    @"HKEY_LOCAL_MACHINE\SOFTWARE\Unwinder\RTSS",
-                    @"HKEY_CURRENT_USER\SOFTWARE\Unwinder\RTSS"
-                };
-
-                foreach (string regPath in registryPaths)
-                {
-                    string? installPath = Registry.GetValue(regPath, "InstallDir", null) as string;
-                    if (installPath != null && Directory.Exists(installPath) && File.Exists(Path.Combine(installPath, "RTSS.exe")))
-                    {
-                        return installPath;
-                    }
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Ошибка поиска RTSS: {ex.Message}");
-                return null;
-            }
-        }
-
-        private void HandleRTSSNotFound()
-        {
-            var result = MessageBox.Show(
-                "RivaTuner Statistics Server не найден автоматически.\n\n" +
-                "RTSS необходим для корректной работы программы.\n\n" +
-                "У вас установлен RivaTuner?",
-                "CS2 AutoBhop - RTSS не найден",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question,
-                MessageBoxDefaultButton.Button2
-            );
-
-            if (result == DialogResult.Yes)
-            {
-                ShowRTSSFolderDialog();
-            }
-            else
-            {
-                var downloadResult = MessageBox.Show(
-                    "Для работы программы необходим RivaTuner Statistics Server.\n\n" +
-                    "Открыть сайт для скачивания?",
-                    "CS2 AutoBhop - Требуется RTSS",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Information
-                );
-
-                if (downloadResult == DialogResult.Yes)
-                {
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo
-                        {
-                            FileName = "https://www.guru3d.com/files-details/rtss-rivatuner-statistics-server-download.html",
-                            UseShellExecute = true
-                        });
-                    }
-                    catch { }
-                }
-
-                MessageBox.Show(
-                    "Программа будет закрыта.\n\n" +
-                    "Запустите программу снова после установки RTSS.",
-                    "CS2 AutoBhop - Выход",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
-
-                Environment.Exit(0);
-            }
-        }
-
-        private void ShowRTSSFolderDialog()
-        {
-            using (var folderDialog = new FolderBrowserDialog())
-            {
-                folderDialog.Description = "Выберите папку установки RivaTuner Statistics Server";
-                folderDialog.ShowNewFolderButton = false;
-
-                if (folderDialog.ShowDialog() == DialogResult.OK)
-                {
-                    string selectedPath = folderDialog.SelectedPath;
-
-                    if (File.Exists(Path.Combine(selectedPath, "RTSS.exe")))
-                    {
-                        LogMessage($"[RTSS] Пользователь указал путь: {selectedPath}");
-                        rtssPath = selectedPath;
-
-                        KillRTSSProcess();
-                        SetupRTSSConfigs();
-                        StartRTSS();
-                    }
-                    else
-                    {
-                        MessageBox.Show(
-                            "В выбранной папке не найден файл RTSS.exe.\n\n" +
-                            "Это не папка RivaTuner Statistics Server.",
-                            "CS2 AutoBhop - Неверная папка",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning
-                        );
-
-                        ShowRTSSFolderDialog();
-                    }
-                }
-                else
-                {
-                    MessageBox.Show(
-                        "Без RTSS программа не может работать корректно.\n\n" +
-                        "Программа будет закрыта.",
-                        "CS2 AutoBhop - Выход",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information
-                    );
-
-                    Environment.Exit(0);
-                }
-            }
-        }
-
-        private void KillRTSSProcess()
-        {
-            try
-            {
-                Process[] rtssProcesses = Process.GetProcessesByName("RTSS");
-                foreach (var process in rtssProcesses)
-                {
-                    try
-                    {
-                        process.Kill();
-                        process.WaitForExit(3000);
-                        LogMessage("[RTSS] Процесс RTSS остановлен");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage($"[WARNING] Не удалось остановить процесс RTSS: {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[WARNING] Ошибка при остановке RTSS: {ex.Message}");
-            }
-        }
-
-        private void SetupRTSSConfigs()
-        {
-            if (rtssPath == null) return;
-
-            try
-            {
-                LogMessage("[RTSS] Настройка конфигурации...");
-
-                string profilesPath = Path.Combine(rtssPath, "Profiles");
-                string pluginsPath = Path.Combine(rtssPath, "Plugins", "Client");
-
-                ForceCreateDirectory(profilesPath);
-                ForceCreateDirectory(pluginsPath);
-
-                string cs2ProfileContent = @"[OSD]
-EnableOSD=1
-EnableBgnd=1
-EnableFill=0
-EnableStat=0
-BaseColor=00FF8000
-BgndColor=00000000
-FillColor=80000000
-PositionX=1
-PositionY=1
-ZoomRatio=2
-CoordinateSpace=0
-EnableFrameColorBar=0
-FrameColorBarMode=0
-RefreshPeriod=500
-IntegerFramerate=1
-MaximumFrametime=0
-EnableFrametimeHistory=0
-FrametimeHistoryWidth=-32
-FrametimeHistoryHeight=-4
-FrametimeHistoryStyle=0
-ScaleToFit=0
-
-[Framerate]
-Limit=64
-LimitDenominator=1
-LimitTime=0
-LimitTimeDenominator=1
-SyncDisplay=0
-SyncScanline0=0
-SyncScanline1=0
-SyncPeriods=0
-SyncLimiter=0
-PassiveWait=1
-ReflexSleep=0
-ReflexSetLatencyMarker=1
-
-[Hooking]
-EnableHooking=1
-HookDirect3D8=1
-HookDirect3D9=1
-HookDXGI=1
-HookDirect3D12=1
-HookOpenGL=1
-HookVulkan=1
-InjectionDelay=15000
-
-[Plugins]
-HotkeyHandler.dll=1
-";
-
-                string lowFpsHex = GetVirtualKeyHexCode(config.GameFPSLowKey);
-                string highFpsHex = GetVirtualKeyHexCode(config.GameFPSHighKey);
-
-                string hotkeyHandlerContent = @"[Settings]
-Hotkey0=46
-Command0=Limit=999
-Hotkey1=45
-Command1=Limit=64
-OSDOnHotkey=00000000
-OSDOffHotkey=00000000
-OSDToggleHotkey=00000000
-LimiterOnHotkey=" + lowFpsHex + @"
-LimiterOffHotkey=" + highFpsHex + @"
-";
-
-                string cs2ProfilePath = Path.Combine(profilesPath, "cs2.exe.cfg");
-                string hotkeyHandlerPath = Path.Combine(pluginsPath, "HotkeyHandler.cfg");
-
-                ForceWriteConfigFile(cs2ProfilePath, cs2ProfileContent, "cs2.exe.cfg");
-                ForceWriteConfigFile(hotkeyHandlerPath, hotkeyHandlerContent, "HotkeyHandler.cfg");
-
-                LogMessage("[RTSS] Конфиги установлены и проверены успешно!");
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Критическая ошибка настройки конфигов RTSS: {ex.Message}");
-
-                MessageBox.Show(
-                    $"КРИТИЧЕСКАЯ ОШИБКА!\n\n" +
-                    $"Не удалось записать конфиги RTSS:\n{ex.Message}\n\n" +
-                    $"Убедитесь что:\n" +
-                    $"• Программа запущена от администратора\n" +
-                    $"• RTSS не заблокирован антивирусом\n" +
-                    $"• Папка RTSS доступна для записи",
-                    "CS2 AutoBhop - Ошибка записи конфигов",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
-
-                Environment.Exit(1);
-            }
-        }
-
-        private void ForceCreateDirectory(string path)
-        {
-            try
-            {
-                if (!Directory.Exists(path))
-                {
-                    Directory.CreateDirectory(path);
-                    LogMessage($"[RTSS] Создана папка: {path}");
-                }
-
-                if (!Directory.Exists(path))
-                {
-                    throw new DirectoryNotFoundException($"Не удалось создать папку: {path}");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Не удалось создать папку {path}: {ex.Message}");
-                throw;
-            }
-        }
-
-        private void ForceWriteConfigFile(string filePath, string content, string fileName)
-        {
-            try
-            {
-
-                File.WriteAllText(filePath, content);
-                LogMessage($"[RTSS] Записан конфиг: {fileName}");
-
-                if (!File.Exists(filePath))
-                {
-                    throw new FileNotFoundException($"Файл {fileName} не был создан");
-                }
-
-                string writtenContent = File.ReadAllText(filePath);
-                if (string.IsNullOrEmpty(writtenContent))
-                {
-                    throw new IOException($"Файл {fileName} пустой - запись не удалась");
-                }
-
-                if (!writtenContent.Contains("[") || writtenContent.Length < content.Length / 2)
-                {
-                    throw new IOException($"Файл {fileName} записан некорректно");
-                }
-
-                LogMessage($"[RTSS] ✓ Конфиг {fileName} проверен и корректен");
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Критическая ошибка записи {fileName}: {ex.Message}");
-                throw new IOException($"Не удалось записать конфиг {fileName}: {ex.Message}", ex);
-            }
-        }
-
-        private void StartRTSS()
-        {
-            if (rtssPath == null) return;
-
-            try
-            {
-                string rtssExePath = Path.Combine(rtssPath, "RTSS.exe");
-
-                if (File.Exists(rtssExePath))
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = rtssExePath,
-                        UseShellExecute = true,
-                        WindowStyle = ProcessWindowStyle.Minimized
-                    });
-
-                    LogMessage("[RTSS] RTSS запущен успешно");
-                    LogMessage("[INFO] Теперь можно запускать игру!");
-
-                    Thread.Sleep(2000);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Ошибка запуска RTSS: {ex.Message}");
-            }
-        }
-
         private void LoadConfig()
         {
             try
@@ -1988,324 +1105,5 @@ LimiterOffHotkey=" + highFpsHex + @"
             }
         }
 
-        private string GetVirtualKeyHexCode(string keyName)
-        {
-            uint vkCode = GetVirtualKeyCode(keyName);
-            if (vkCode != 0)
-            {
-                return vkCode.ToString("X8");
-            }
-            return "00000000";
-        }
-
-        private void UpdateRTSSHotkeyConfig()
-        {
-            if (rtssPath == null) return;
-
-            try
-            {
-                string pluginsPath = Path.Combine(rtssPath, "Plugins", "Client");
-                string hotkeyHandlerPath = Path.Combine(pluginsPath, "HotkeyHandler.cfg");
-
-                string lowFpsHex = GetVirtualKeyHexCode(config.GameFPSLowKey);
-                string highFpsHex = GetVirtualKeyHexCode(config.GameFPSHighKey);
-
-                string updatedContent;
-                if (File.Exists(hotkeyHandlerPath))
-                {
-                    LogMessage("[RTSS] Обновление существующего HotkeyHandler.cfg");
-                    string existingContent = File.ReadAllText(hotkeyHandlerPath);
-                    updatedContent = UpdateHotkeyHandlerContent(existingContent, lowFpsHex, highFpsHex);
-                }
-                else
-                {
-                    LogMessage("[RTSS] Создание нового HotkeyHandler.cfg");
-                    updatedContent = @"[Settings]
-Hotkey0=46
-Command0=Limit=999
-Hotkey1=45
-Command1=Limit=64
-OSDOnHotkey=00000000
-OSDOffHotkey=00000000
-OSDToggleHotkey=00000000
-LimiterOnHotkey=" + lowFpsHex + @"
-LimiterOffHotkey=" + highFpsHex + @"
-";
-                }
-
-                ForceWriteConfigFile(hotkeyHandlerPath, updatedContent, "HotkeyHandler.cfg");
-                LogMessage($"[RTSS] Горячие клавиши обновлены: низкий FPS = {config.GameFPSLowKey} ({lowFpsHex}), высокий FPS = {config.GameFPSHighKey} ({highFpsHex})");
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Ошибка обновления RTSS конфига: {ex.Message}");
-            }
-        }
-
-        private string UpdateHotkeyHandlerContent(string existingContent, string lowFpsHex, string highFpsHex)
-        {
-            string[] lines = existingContent.Split('\n');
-            bool foundLimiterOn = false;
-            bool foundLimiterOff = false;
-            bool inSettingsSection = false;
-
-            List<string> updatedLines = new List<string>();
-
-            foreach (string line in lines)
-            {
-                string trimmedLine = line.Trim();
-
-                if (trimmedLine == "[Settings]")
-                {
-                    inSettingsSection = true;
-                    updatedLines.Add(line);
-                    continue;
-                }
-
-                if (trimmedLine.StartsWith("[") && trimmedLine != "[Settings]")
-                {
-                    inSettingsSection = false;
-                }
-
-                if (inSettingsSection)
-                {
-                    if (trimmedLine.StartsWith("LimiterOnHotkey="))
-                    {
-                        updatedLines.Add($"LimiterOnHotkey={lowFpsHex}");
-                        foundLimiterOn = true;
-                        continue;
-                    }
-                    else if (trimmedLine.StartsWith("LimiterOffHotkey="))
-                    {
-                        updatedLines.Add($"LimiterOffHotkey={highFpsHex}");
-                        foundLimiterOff = true;
-                        continue;
-                    }
-                }
-
-                updatedLines.Add(line);
-            }
-
-            if (!foundLimiterOn || !foundLimiterOff)
-            {
-
-                for (int i = 0; i < updatedLines.Count; i++)
-                {
-                    if (updatedLines[i].Trim() == "[Settings]")
-                    {
-                        int insertIndex = i + 1;
-
-                        while (insertIndex < updatedLines.Count &&
-                               !updatedLines[insertIndex].Trim().StartsWith("["))
-                        {
-                            insertIndex++;
-                        }
-
-                        if (!foundLimiterOn)
-                        {
-                            updatedLines.Insert(insertIndex, $"LimiterOnHotkey={lowFpsHex}");
-                            insertIndex++;
-                        }
-                        if (!foundLimiterOff)
-                        {
-                            updatedLines.Insert(insertIndex, $"LimiterOffHotkey={highFpsHex}");
-                        }
-                        break;
-                    }
-                }
-            }
-
-            return string.Join("\n", updatedLines);
-        }
-
-        private void RestartRTSS()
-        {
-            if (rtssPath == null) return;
-
-            try
-            {
-                LogMessage("[RTSS] Перезапуск RivaTuner...");
-
-                KillRTSSProcess();
-
-                Thread.Sleep(1000);
-
-                StartRTSS();
-
-                LogMessage("[RTSS] RivaTuner успешно перезапущен с новыми настройками!");
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[ERROR] Ошибка перезапуска RTSS: {ex.Message}");
-            }
-        }
-
-        private bool IsRTSSConfigUpToDate()
-        {
-            if (rtssPath == null) return false;
-
-            try
-            {
-                string pluginsPath = Path.Combine(rtssPath, "Plugins", "Client");
-                string hotkeyHandlerPath = Path.Combine(pluginsPath, "HotkeyHandler.cfg");
-
-                if (!File.Exists(hotkeyHandlerPath))
-                {
-                    LogMessage("[RTSS] HotkeyHandler.cfg не найден");
-                    return false;
-                }
-
-                string content = File.ReadAllText(hotkeyHandlerPath);
-
-                string expectedLowFpsHex = GetVirtualKeyHexCode(config.GameFPSLowKey);
-                string expectedHighFpsHex = GetVirtualKeyHexCode(config.GameFPSHighKey);
-
-                if (!content.Contains("[Settings]"))
-                {
-                    LogMessage("[RTSS] Секция [Settings] не найдена в HotkeyHandler.cfg");
-                    return false;
-                }
-
-                bool hasCorrectLowFps = false;
-                bool hasCorrectHighFps = false;
-
-                string[] lines = content.Split('\n');
-                foreach (string line in lines)
-                {
-                    string trimmedLine = line.Trim();
-
-                    if (trimmedLine.StartsWith("LimiterOnHotkey="))
-                    {
-                        string currentValue = trimmedLine.Substring("LimiterOnHotkey=".Length);
-                        hasCorrectLowFps = currentValue.Equals(expectedLowFpsHex, StringComparison.OrdinalIgnoreCase);
-                        LogMessage($"[RTSS] LimiterOnHotkey: текущий = {currentValue}, ожидаемый = {expectedLowFpsHex}, совпадает = {hasCorrectLowFps}");
-                    }
-                    else if (trimmedLine.StartsWith("LimiterOffHotkey="))
-                    {
-                        string currentValue = trimmedLine.Substring("LimiterOffHotkey=".Length);
-                        hasCorrectHighFps = currentValue.Equals(expectedHighFpsHex, StringComparison.OrdinalIgnoreCase);
-                        LogMessage($"[RTSS] LimiterOffHotkey: текущий = {currentValue}, ожидаемый = {expectedHighFpsHex}, совпадает = {hasCorrectHighFps}");
-                    }
-                }
-
-                bool isUpToDate = hasCorrectLowFps && hasCorrectHighFps;
-                LogMessage($"[RTSS] Конфиг актуален: {isUpToDate}");
-
-                return isUpToDate;
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"[RTSS] Ошибка проверки конфига: {ex.Message}");
-                return false;
-            }
-        }
-
-        private bool AskForRTSSConfigPermission()
-        {
-            var result = MessageBox.Show(
-                "RivaTuner Statistics Server найден!\n\n" +
-                "Для корректной работы программы необходимо настроить конфигурации RTSS:\n\n" +
-                "• Профиль для CS2 с ограничением FPS\n" +
-                "• Глобальные горячие клавиши для переключения FPS\n" +
-                "• Плагин HotkeyHandler для обработки нажатий\n\n" +
-                "Это может изменить некоторые существующие настройки RTSS.\n\n" +
-                "Разрешить программе настроить RTSS?",
-                "CS2 AutoBhop - Настройка RivaTuner",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question,
-                MessageBoxDefaultButton.Button1
-            );
-
-            return result == DialogResult.Yes;
-        }
-
-        private void HandleRTSSConfigDeclined()
-        {
-            var result = MessageBox.Show(
-                "Без настройки RTSS программа будет работать в ограниченном режиме:\n\n" +
-                "✓ AutoBhop будет работать\n" +
-                "✗ Автоматическое переключение FPS НЕ будет работать\n" +
-                "✗ Горячие клавиши F5/F6 НЕ будут работать\n\n" +
-                "Вы сможете настроить RTSS позже через меню программы.\n\n" +
-                "Продолжить работу без настройки RTSS?",
-                "CS2 AutoBhop - Ограниченный режим",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button1
-            );
-
-            if (result == DialogResult.Yes)
-            {
-                LogMessage("[RTSS] Работа в ограниченном режиме без RTSS");
-                LogMessage("[WARNING] FPS Control не будет работать без настройки RTSS");
-
-                config.FPSMode = false;
-                SaveConfig();
-
-                rtssPath = null;
-            }
-            else
-            {
-                LogMessage("[RTSS] Пользователь передумал, показываем диалог настройки заново");
-
-                if (AskForRTSSConfigPermission())
-                {
-                    LogMessage("[RTSS] Пользователь разрешил настройку RTSS");
-                    KillRTSSProcess();
-                    SetupRTSSConfigs();
-                    StartRTSS();
-                }
-                else
-                {
-
-                    HandleRTSSConfigDeclined();
-                }
-            }
-        }
-
-        private void SetupRTSSLater()
-        {
-            Console.WriteLine("Настройка RTSS...");
-            Console.WriteLine();
-
-            string? foundRtssPath = FindRTSSInstallPath();
-            if (foundRtssPath == null)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("RTSS не найден!");
-                Console.ResetColor();
-                Console.WriteLine("Убедитесь что RivaTuner Statistics Server установлен.");
-                Thread.Sleep(3000);
-                return;
-            }
-
-            Console.WriteLine($"RTSS найден: {foundRtssPath}");
-
-            if (AskForRTSSConfigPermission())
-            {
-                rtssPath = foundRtssPath;
-
-                Console.WriteLine("Настройка RTSS конфигов...");
-                KillRTSSProcess();
-                SetupRTSSConfigs();
-                StartRTSS();
-
-                config.FPSMode = true;
-                SaveConfig();
-
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("RTSS успешно настроен!");
-                Console.WriteLine("FPS Control теперь работает!");
-                Console.ResetColor();
-            }
-            else
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("Настройка RTSS отменена.");
-                Console.ResetColor();
-            }
-
-            Thread.Sleep(3000);
-        }
     }
 }
